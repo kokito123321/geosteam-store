@@ -130,7 +130,7 @@ async def handle_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         st_settings = res.scalars().first()
 
     is_admin = is_user_admin(user.id, st_settings)
-    webapp_url = f"http://{settings.HOST if settings.HOST != '0.0.0.0' else 'localhost'}:{settings.PORT}/admin"
+    webapp_url = settings.WEBAPP_URL
     kb = get_main_keyboard(is_admin=is_admin, webapp_url=webapp_url)
 
     welcome_text = (
@@ -376,7 +376,7 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
             customer.temp_cart = "{}"
             await session.commit()
             is_admin = is_user_admin(user.id, st_settings)
-            webapp_url = f"http://{settings.HOST if settings.HOST != '0.0.0.0' else 'localhost'}:{settings.PORT}/admin"
+            webapp_url = settings.WEBAPP_URL
             await query.message.reply_text(
                 "❌ შეკვეთის პროცესი გაუქმდა.",
                 reply_markup=get_main_keyboard(is_admin, webapp_url)
@@ -384,7 +384,7 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
 
         elif data == "back_to_menu":
             is_admin = is_user_admin(user.id, st_settings)
-            webapp_url = f"http://{settings.HOST if settings.HOST != '0.0.0.0' else 'localhost'}:{settings.PORT}/admin"
+            webapp_url = settings.WEBAPP_URL
             await query.message.reply_text("მთავარი მენიუ:", reply_markup=get_main_keyboard(is_admin, webapp_url))
 
 async def finalize_order(message_target, customer: Customer, cart: dict, st_settings: StoreSettings, context: ContextTypes.DEFAULT_TYPE):
@@ -480,7 +480,7 @@ async def finalize_order(message_target, customer: Customer, cart: dict, st_sett
     )
 
     is_admin = is_user_admin(customer.telegram_id, st_settings)
-    webapp_url = f"http://{settings.HOST if settings.HOST != '0.0.0.0' else 'localhost'}:{settings.PORT}/admin"
+    webapp_url = settings.WEBAPP_URL
     await message_target.reply_text(
         confirm_text,
         reply_markup=get_main_keyboard(is_admin, webapp_url),
@@ -533,7 +533,7 @@ async def handle_text_or_multimedia(update: Update, context: ContextTypes.DEFAUL
             customer.bot_paused = False
             await session.commit()
             is_admin = is_user_admin(user.id, st_settings)
-            webapp_url = f"http://{settings.HOST if settings.HOST != '0.0.0.0' else 'localhost'}:{settings.PORT}/admin"
+            webapp_url = settings.WEBAPP_URL
             await message.reply_text(GEOSTEAM_ABOUT_US_TEXT, reply_markup=get_main_keyboard(is_admin, webapp_url), parse_mode="Markdown")
             return
         elif text == "🙋‍♂️ ოპერატორი":
@@ -544,7 +544,7 @@ async def handle_text_or_multimedia(update: Update, context: ContextTypes.DEFAUL
             customer.temp_cart = "{}"
             await session.commit()
             is_admin = is_user_admin(user.id, st_settings)
-            webapp_url = f"http://{settings.HOST if settings.HOST != '0.0.0.0' else 'localhost'}:{settings.PORT}/admin"
+            webapp_url = settings.WEBAPP_URL
             await message.reply_text("შეკვეთა გაუქმებულია.", reply_markup=get_main_keyboard(is_admin, webapp_url))
             return
 
@@ -820,7 +820,7 @@ async def handle_text_or_multimedia(update: Update, context: ContextTypes.DEFAUL
                 customer.bot_paused = False
                 await session.commit()
                 is_admin = is_user_admin(user.id, st_settings)
-                webapp_url = f"http://{settings.HOST if settings.HOST != '0.0.0.0' else 'localhost'}:{settings.PORT}/admin"
+                webapp_url = settings.WEBAPP_URL
                 await message.reply_text("🤖 **ბოტი კვლავ აქტიურია!** რით დაგეხმარო? 💨", reply_markup=get_main_keyboard(is_admin, webapp_url), parse_mode="Markdown")
                 return
             return
@@ -883,6 +883,6 @@ async def handle_text_or_multimedia(update: Update, context: ContextTypes.DEFAUL
 
         # Send response to customer with persistent menu keyboard
         is_admin = is_user_admin(user.id, st_settings)
-        webapp_url = f"http://{settings.HOST if settings.HOST != '0.0.0.0' else 'localhost'}:{settings.PORT}/admin"
+        webapp_url = settings.WEBAPP_URL
         main_kb = get_main_keyboard(is_admin, webapp_url)
         await message.reply_text(ai_reply, reply_markup=main_kb, parse_mode="Markdown")

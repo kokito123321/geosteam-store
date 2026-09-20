@@ -2,6 +2,7 @@ from telegram import (
     ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
 )
 from typing import List, Optional
+from backend.app.config import settings
 from backend.app.models import StoreSettings, Product
 
 def get_main_keyboard(is_admin: bool = False, webapp_url: Optional[str] = None) -> ReplyKeyboardMarkup:
@@ -11,9 +12,11 @@ def get_main_keyboard(is_admin: bool = False, webapp_url: Optional[str] = None) 
         [KeyboardButton(text="ℹ️ მაღაზია & ლოკაცია"), KeyboardButton(text="🇬🇪 ჩვენს შესახებ")],
         [KeyboardButton(text="🙋‍♂️ ოპერატორი")]
     ]
-    if is_admin and webapp_url:
+    # Telegram API strictly requires HTTPS for WebAppInfo
+    target_url = webapp_url or settings.WEBAPP_URL or ""
+    if is_admin and target_url and target_url.startswith("https://"):
         keyboard.append([
-            KeyboardButton(text="📱 მართვის პანელი (Mini App)", web_app=WebAppInfo(url=webapp_url))
+            KeyboardButton(text="📱 მართვის პანელი (Mini App)", web_app=WebAppInfo(url=target_url))
         ])
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 

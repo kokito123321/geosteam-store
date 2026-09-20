@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     TELEGRAM_BOT_TOKEN: str = ""
     TELEGRAM_CHANNEL_ID: str = "" # e.g. @your_channel or -100xxxxxxxxxx
     ADMIN_TELEGRAM_IDS: str = "" # Comma-separated list of admin telegram user IDs (e.g. "12345678,87654321")
+    WEBAPP_URL: str = "https://geosteam-store.onrender.com/admin"
     
     # Google Gemini AI & Google Cloud Vertex AI
     GEMINI_API_KEY: str = ""
