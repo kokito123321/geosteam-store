@@ -526,7 +526,9 @@ async def handle_text_or_multimedia(update: Update, context: ContextTypes.DEFAUL
             await handle_store_info(update, context)
             return
         elif text == "🇬🇪 ჩვენს შესახებ" or "ჩვენს შესახებ" in text.lower() or "ვინ ხართ" in text.lower():
-            await message.reply_text(GEOSTEAM_ABOUT_US_TEXT, parse_mode="Markdown")
+            is_admin = is_user_admin(user.id, st_settings)
+            webapp_url = f"http://{settings.HOST if settings.HOST != '0.0.0.0' else 'localhost'}:{settings.PORT}/admin"
+            await message.reply_text(GEOSTEAM_ABOUT_US_TEXT, reply_markup=get_main_keyboard(is_admin, webapp_url), parse_mode="Markdown")
             return
         elif text == "🙋‍♂️ ოპერატორი":
             await handle_request_operator(update, context)
@@ -866,5 +868,8 @@ async def handle_text_or_multimedia(update: Update, context: ContextTypes.DEFAUL
             }
         })
 
-        # Send response to customer
-        await message.reply_text(ai_reply, parse_mode="Markdown")
+        # Send response to customer with persistent menu keyboard
+        is_admin = is_user_admin(user.id, st_settings)
+        webapp_url = f"http://{settings.HOST if settings.HOST != '0.0.0.0' else 'localhost'}:{settings.PORT}/admin"
+        main_kb = get_main_keyboard(is_admin, webapp_url)
+        await message.reply_text(ai_reply, reply_markup=main_kb, parse_mode="Markdown")
