@@ -31,13 +31,14 @@ class Settings(BaseSettings):
     # Database
     DATABASE_URL: str = f"sqlite+aiosqlite:///{BASE_DIR / 'store.db'}"
     
-    # Email / SMTP
+    # Email / SMTP & HTTP API
     SMTP_HOST: str = ""
     SMTP_PORT: int = 587
     SMTP_USER: str = ""
     SMTP_PASSWORD: str = ""
     SMTP_FROM_EMAIL: str = ""
     ADMIN_EMAIL: str = ""
+    RESEND_API_KEY: str = ""
     
     # Defaults for store
     STORE_NAME: str = "Geosteam / ჯეოსტიმი"

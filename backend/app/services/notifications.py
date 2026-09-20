@@ -1,5 +1,7 @@
+import os
 import json
 import logging
+import httpx
 from typing import List, Dict, Any, Optional
 from email.message import EmailMessage
 import aiosmtplib
@@ -37,7 +39,7 @@ async def send_email_alert(
     store_settings: Optional[StoreSettings] = None,
     html_body: Optional[str] = None
 ) -> bool:
-    """Sends email alert via SMTP with auto port fallback (465 SSL / 587 TLS)."""
+    """Sends email alert via Resend HTTPS API (if configured) or SMTP with auto port fallback (465 SSL / 587 TLS)."""
     if not store_settings:
         from backend.app.database import async_session_maker
         from sqlalchemy import select
@@ -45,12 +47,42 @@ async def send_email_alert(
             res = await session.execute(select(StoreSettings).limit(1))
             store_settings = res.scalars().first()
 
+    to_email = (store_settings.admin_email if store_settings else "") or settings.ADMIN_EMAIL
+
+    # 1. Try Resend HTTPS API if key is present (Bypasses all cloud port firewalls)
+    resend_key = getattr(settings, "RESEND_API_KEY", "") or os.environ.get("RESEND_API_KEY", "")
+    if resend_key and to_email:
+        try:
+            logger.info(f"Attempting email send via Resend HTTPS API to {to_email}...")
+            async with httpx.AsyncClient() as client:
+                resp = await client.post(
+                    "https://api.resend.com/emails",
+                    headers={
+                        "Authorization": f"Bearer {resend_key}",
+                        "Content-Type": "application/json"
+                    },
+                    json={
+                        "from": "Geosteam Store <onboarding@resend.dev>",
+                        "to": [to_email],
+                        "subject": subject,
+                        "text": body,
+                        "html": html_body or f"<p>{body}</p>"
+                    },
+                    timeout=10.0
+                )
+                if resp.status_code in (200, 201):
+                    logger.info(f"✅ Email sent via Resend API to {to_email}")
+                    return True
+                else:
+                    logger.warning(f"Resend API error ({resp.status_code}): {resp.text}")
+        except Exception as e:
+            logger.warning(f"Resend HTTP request failed: {e}")
+
     host = (store_settings.smtp_host if store_settings else "") or settings.SMTP_HOST
     config_port = int((store_settings.smtp_port if store_settings else None) or settings.SMTP_PORT or 465)
     user = (store_settings.smtp_user if store_settings else "") or settings.SMTP_USER
     password = (store_settings.smtp_password if store_settings else "") or settings.SMTP_PASSWORD
     from_email = (store_settings.smtp_from_email if store_settings else "") or settings.SMTP_FROM_EMAIL or user
-    to_email = (store_settings.admin_email if store_settings else "") or settings.ADMIN_EMAIL
 
     if not host or not to_email:
         logger.info(f"SMTP not fully configured (Host: '{host}', To: '{to_email}'). Skipping email alert.")
