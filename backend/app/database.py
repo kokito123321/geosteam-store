@@ -1,6 +1,14 @@
+import json
+import logging
+from pathlib import Path
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy import select, text
+from passlib.context import CryptContext
+
 from backend.app.config import settings
+
+logger = logging.getLogger(__name__)
 
 engine = create_async_engine(
     settings.DATABASE_URL,
@@ -25,11 +33,7 @@ async def get_db():
             await session.close()
 
 async def init_db():
-    from backend.app.models import StoreSettings, AdminUser
-    from passlib.context import CryptContext
-    from sqlalchemy import select
-
-    from sqlalchemy import text
+    from backend.app.models import StoreSettings, AdminUser, Product
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
