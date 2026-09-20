@@ -105,7 +105,7 @@ async def init_db():
                 bank_name="BOG",
                 bank_iban="GE58BG0000000100906441",
                 bank_recipient="ლ.ჩ",
-                gemini_model="gemini-2.5-flash",
+                gemini_model="gemini-2.0-flash",
                 admin_telegram_ids="7191755188",
                 admin_email="lchibarashvili@gmail.com",
                 smtp_host="smtp.gmail.com",
@@ -130,8 +130,8 @@ async def init_db():
                 current_settings.bank_recipient = "Geosteam"
             if current_settings.system_prompt and "შპს" in current_settings.system_prompt:
                 current_settings.system_prompt = current_settings.system_prompt.replace("არასდროს ახსენო 'შპს'.", "").replace("შპს", "")
-            if not getattr(current_settings, "gemini_model", None):
-                current_settings.gemini_model = "gemini-2.5-flash"
+            if not getattr(current_settings, "gemini_model", None) or "2.5" in (current_settings.gemini_model or "") or "3.8" in (current_settings.gemini_model or ""):
+                current_settings.gemini_model = "gemini-2.0-flash"
             session.add(current_settings)
             
         # Check products count - seed all products if empty

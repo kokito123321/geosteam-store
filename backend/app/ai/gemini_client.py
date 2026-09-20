@@ -175,7 +175,7 @@ async def register_customer_order(
 class GeminiService:
     def __init__(self):
         self.api_key = settings.GEMINI_API_KEY
-        self.model_name = settings.GEMINI_MODEL or "gemini-2.5-flash"
+        self.model_name = settings.GEMINI_MODEL or "gemini-2.0-flash"
         self._client: Optional[genai.Client] = None
 
     @property
@@ -274,7 +274,7 @@ class GeminiService:
 
             # Model cascade
             candidate_models = [self.model_name]
-            for fallback_m in ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]:
+            for fallback_m in ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-2.5-flash"]:
                 if fallback_m not in candidate_models:
                     candidate_models.append(fallback_m)
 
@@ -287,6 +287,12 @@ class GeminiService:
                         contents=contents,
                         config=config
                     )
+                    if response:
+                        self.model_name = model_cand
+                        break
+                except Exception as ex:
+                    last_err = ex
+                    logger.warning(f"Model {model_cand} call failed: {ex}. Trying next model...")
                     if response:
                         break
                 except Exception as ex:

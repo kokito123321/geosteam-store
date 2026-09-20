@@ -124,16 +124,24 @@ async def debug_ai():
     from backend.app.ai.gemini_client import gemini_service
     client_status = bool(gemini_service.client)
     api_key_len = len(settings.GEMINI_API_KEY) if settings.GEMINI_API_KEY else 0
-    model = gemini_service.model_name
     test_result = None
+    working_model = None
     error_msg = None
     try:
         if gemini_service.client:
-            resp = await gemini_service.client.aio.models.generate_content(
-                model=model,
-                contents="Hello, reply with 1 word: OK"
-            )
-            test_result = resp.text.strip() if resp and resp.text else ""
+            for m in ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-2.5-flash"]:
+                try:
+                    resp = await gemini_service.client.aio.models.generate_content(
+                        model=m,
+                        contents="Hello, reply with 1 word: OK"
+                    )
+                    if resp and resp.text:
+                        test_result = resp.text.strip()
+                        working_model = m
+                        gemini_service.model_name = m
+                        break
+                except Exception as mex:
+                    error_msg = f"{m} failed: {mex}"
         else:
             error_msg = "Client is None (GEMINI_API_KEY not configured or empty)"
     except Exception as e:
@@ -143,7 +151,7 @@ async def debug_ai():
         "client_initialized": client_status,
         "api_key_present": api_key_len > 0,
         "api_key_masked": f"{settings.GEMINI_API_KEY[:6]}...{settings.GEMINI_API_KEY[-4:]}" if api_key_len > 10 else "",
-        "model": model,
+        "active_model": working_model or gemini_service.model_name,
         "test_result": test_result,
-        "error": error_msg
+        "error": error_msg if not test_result else None
     }
