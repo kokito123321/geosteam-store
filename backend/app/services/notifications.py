@@ -37,7 +37,7 @@ async def send_email_alert(
     store_settings: Optional[StoreSettings] = None,
     html_body: Optional[str] = None
 ) -> bool:
-    """Sends email alert via SMTP if configured."""
+    """Sends email alert via SMTP with auto port fallback (465 SSL / 587 TLS)."""
     if not store_settings:
         from backend.app.database import async_session_maker
         from sqlalchemy import select
@@ -46,7 +46,7 @@ async def send_email_alert(
             store_settings = res.scalars().first()
 
     host = (store_settings.smtp_host if store_settings else "") or settings.SMTP_HOST
-    port = (store_settings.smtp_port if store_settings else None) or settings.SMTP_PORT or 587
+    config_port = int((store_settings.smtp_port if store_settings else None) or settings.SMTP_PORT or 465)
     user = (store_settings.smtp_user if store_settings else "") or settings.SMTP_USER
     password = (store_settings.smtp_password if store_settings else "") or settings.SMTP_PASSWORD
     from_email = (store_settings.smtp_from_email if store_settings else "") or settings.SMTP_FROM_EMAIL or user
@@ -56,34 +56,44 @@ async def send_email_alert(
         logger.info(f"SMTP not fully configured (Host: '{host}', To: '{to_email}'). Skipping email alert.")
         return False
 
-    try:
-        msg = EmailMessage()
-        msg["From"] = from_email or user or "noreply@geosteam.ge"
-        msg["To"] = to_email
-        msg["Subject"] = subject
-        msg.set_content(body)
+    msg = EmailMessage()
+    msg["From"] = from_email or user or "noreply@geosteam.ge"
+    msg["To"] = to_email
+    msg["Subject"] = subject
+    msg.set_content(body)
 
-        if html_body:
-            msg.add_alternative(html_body, subtype="html")
+    if html_body:
+        msg.add_alternative(html_body, subtype="html")
 
-        is_ssl = (int(port) == 465)
-        is_tls = (int(port) == 587 or not is_ssl)
+    # Cloud hosting providers (e.g. Render, AWS, GCP) often block plaintext port 587.
+    # Port 465 (SMTPS direct SSL) is direct and standard.
+    # We attempt both 465 SSL and 587 TLS for maximum reliability.
+    port_attempts = [(465, True, False), (587, False, True)]
+    if config_port == 587:
+        port_attempts = [(465, True, False), (587, False, True)]
 
-        await aiosmtplib.send(
-            msg,
-            hostname=host,
-            port=int(port),
-            username=user if user else None,
-            password=password if password else None,
-            start_tls=is_tls,
-            use_tls=is_ssl,
-            timeout=15
-        )
-        logger.info(f"✅ Email alert sent successfully to {to_email}")
-        return True
-    except Exception as e:
-        logger.error(f"❌ Failed to send email alert to {to_email} via {host}:{port}: {e}")
-        return False
+    last_err = None
+    for port, is_ssl, is_tls in port_attempts:
+        try:
+            logger.info(f"Attempting SMTP send to {to_email} via {host}:{port} (SSL={is_ssl}, TLS={is_tls})...")
+            await aiosmtplib.send(
+                msg,
+                hostname=host,
+                port=port,
+                username=user if user else None,
+                password=password if password else None,
+                start_tls=is_tls,
+                use_tls=is_ssl,
+                timeout=12
+            )
+            logger.info(f"✅ Email alert sent successfully to {to_email} via {host}:{port}")
+            return True
+        except Exception as e:
+            last_err = e
+            logger.warning(f"SMTP attempt via {host}:{port} failed: {e}")
+
+    logger.error(f"❌ Failed to send email alert to {to_email} via all SMTP ports: {last_err}")
+    return False
 
 async def notify_new_order(order: Order, store_settings: Optional[StoreSettings] = None, bot_app=None):
     """

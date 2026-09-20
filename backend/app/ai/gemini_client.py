@@ -443,47 +443,47 @@ class GeminiService:
         """
         if not self.client:
             return {
-                "is_valid_receipt": True,
-                "is_match": True,
-                "extracted_amount": expected_amount,
-                "extracted_iban": expected_iban,
-                "reason": "AI Client not initialized (Fallback approval)"
+                "is_valid_receipt": False,
+                "is_match": False,
+                "extracted_amount": 0.0,
+                "extracted_iban": "",
+                "reason": "AI კლიენტი არ არის ინიციალიზებული (საჭიროებს ოპერატორის გადამოწმებას)"
             }
 
         prompt = f"""
-შენ ხარ Geosteam-ის საბანკო ქვითრების AI ანალიტიკოსი და უსაფრთხოების აუდიტორი.
-შეისწავლე ეს ფოტო/სქრინშოტი და დაადგინე:
-1. არის თუ არა ეს ნამდვილი საბანკო გადარიცხვის ქვითარი / ჩეკი (მაგ: TBC, BOG / საქართველოს ბანკი, Liberty, Credo ან სხვა).
+შენ ხარ Geosteam-ის საბანკო ქვითრების მკაცრი AI ანალიტიკოსი და უსაფრთხოების აუდიტორი.
+შეისწავლე ეს ფოტო/სქრინშოტი და ზედმიწევნით შეამოწმე:
+1. არის თუ არა ეს ნამდვილი საბანკო გადარიცხვის ქვითარი / ჩეკი (მაგ: საქართველოს ბანკი / BOG, TBC, Liberty, Credo ან სხვა ბანკი).
 2. ამოიღე მიმღების IBAN ანგარიშის ნომერი (Recipient IBAN).
-3. ამოიღე მიმღების სახელი (Recipient Name).
-4. ამოიღე გადარიცხული თანხა (Amount GEL-ში, float რიცხვი).
+3. ამოიღე გადარიცხული თანხა (Amount GEL-ში, float რიცხვი).
+4. ამოიღე მიმღების სახელი (Recipient Name).
 5. ამოიღე გადამხდელის სახელი (Sender Name).
-6. ამოიღე ტრანზაქციის თარიღი/დრო და დანიშნულება.
 
 ჩვენი მაღაზიის (Geosteam) მოსალოდნელი მონაცემებია:
 - მოსალოდნელი IBAN: "{expected_iban}"
-- მოსალოდნელი თანხა: {expected_amount} GEL
+- მოსალოდნელი ზუსტი თანხა: {expected_amount:.2f} GEL
 - მიმღები: "{expected_recipient}"
 
-შეადარე ქვითრიდან ამოღებული მონაცემები ჩვენს მოსალოდნელ მონაცემებს.
-გაითვალისწინე:
-- IBAN-ის შედარებისას უგულებელყავი გამოტოვებები და შეამოწმე ემთხვევა თუ არა ანგარიშის ნომერი.
-- თანხის შედარებისას გადარიცხული თანხა უნდა იყოს მინიმუმ {expected_amount} GEL (დაშვებულია უმნიშვნელო დამრგვალება).
+მკაცრი წესები შედარებისთვის:
+- თუ ფოტოზე საერთოდ არ არის საბანკო ქვითარი ან არის სხვა რამის სქრინშოტი -> is_valid_receipt = false, is_match = false
+- თუ გადარიცხვა შესრულებულია მობილურის ნომერზე (P2P), პირად ანგარიშზე ან სხვა IBAN-ზე (და არა "{expected_iban}") -> is_iban_match = false, is_match = false
+- თუ გადარიცხული თანხა არ შეესაბამება {expected_amount:.2f} GEL-ს (მაგ: 33₾-ის მაგივრად 65₾ ან 10₾-ია) -> is_amount_match = false, is_match = false
+- is_match უნდა იყოს true მხოლოდ და მხოლოდ იმ შემთხვევაში, თუ IBAN-იც და თანხაც ზუსტად ემთხვევა Geosteam-ის მონაცემებს!
 
-დააბრუნე მხოლოდ მკაცრი JSON ობიექტი შემდეგი ფორმატით (დამატებითი ტექსტის გარეშე):
+დააბრუნე მხოლოდ მკაცრი JSON შემდეგი ფორმატით:
 {{
-  "is_valid_receipt": true,
+  "is_valid_receipt": false,
   "extracted_iban": "GE...",
   "extracted_recipient": "...",
   "extracted_amount": 0.0,
   "currency": "GEL",
   "sender_name": "...",
   "transaction_date": "...",
-  "is_iban_match": true,
-  "is_amount_match": true,
-  "is_match": true,
+  "is_iban_match": false,
+  "is_amount_match": false,
+  "is_match": false,
   "fraud_score": 0,
-  "reason": "მოკლე ქართული ახსნა რა ემთხვევა ან რა არ ემთხვევა"
+  "reason": "მოკლე ქართული ახსნა რა ემთხვევა და რა არ ემთხვევა"
 }}
 """
         try:
@@ -492,11 +492,30 @@ class GeminiService:
                 temperature=0.1,
                 response_mime_type="application/json"
             )
-            response = await self.client.aio.models.generate_content(
-                model=self.model_name,
-                contents=[image_part, prompt],
-                config=config
-            )
+
+            candidate_models = [self.model_name]
+            for fallback_m in ["gemini-3.6-flash", "gemini-3.8-flash"]:
+                if fallback_m not in candidate_models:
+                    candidate_models.append(fallback_m)
+
+            response = None
+            last_err = None
+            for model_cand in candidate_models:
+                try:
+                    response = await self.client.aio.models.generate_content(
+                        model=model_cand,
+                        contents=[image_part, prompt],
+                        config=config
+                    )
+                    if response:
+                        self.model_name = model_cand
+                        break
+                except Exception as ex:
+                    last_err = ex
+                    logger.warning(f"Vision call with {model_cand} failed: {ex}")
+
+            if not response:
+                raise last_err or Exception("All Gemini vision models failed")
 
             raw_text = response.text.strip()
             if raw_text.startswith("```json"):
@@ -507,33 +526,49 @@ class GeminiService:
 
             result = json.loads(raw_text)
 
-            extracted_iban = str(result.get("extracted_iban", "")).replace(" ", "").upper()
+            extracted_iban = str(result.get("extracted_iban") or "").replace(" ", "").upper()
             clean_expected_iban = str(expected_iban).replace(" ", "").upper()
-            extracted_amount = float(result.get("extracted_amount", 0.0) or 0.0)
+            extracted_amount = float(result.get("extracted_amount") or 0.0)
 
-            if clean_expected_iban and extracted_iban:
-                iban_ok = (clean_expected_iban in extracted_iban) or (extracted_iban in clean_expected_iban)
+            # Strict IBAN Check
+            if clean_expected_iban:
+                iban_ok = bool(extracted_iban and (clean_expected_iban in extracted_iban or extracted_iban in clean_expected_iban))
             else:
-                iban_ok = bool(result.get("is_iban_match", True))
+                iban_ok = bool(result.get("is_iban_match", False))
 
-            amount_ok = (extracted_amount >= (expected_amount - 0.5)) if expected_amount > 0 else True
-            is_valid_receipt = bool(result.get("is_valid_receipt", True))
+            # Strict Amount Check (must match within 0.2 GEL tolerance)
+            if expected_amount > 0:
+                amount_ok = abs(extracted_amount - expected_amount) <= 0.2
+            else:
+                amount_ok = bool(result.get("is_amount_match", False))
 
-            final_match = bool(is_valid_receipt and iban_ok and amount_ok and result.get("is_match", True))
+            is_valid_receipt = bool(result.get("is_valid_receipt", False))
+
+            final_match = bool(is_valid_receipt and iban_ok and amount_ok and (result.get("is_match") is True))
             result["is_match"] = final_match
             result["is_iban_match"] = iban_ok
             result["is_amount_match"] = amount_ok
+
+            if not final_match and not result.get("reason"):
+                reasons = []
+                if not is_valid_receipt:
+                    reasons.append("არ არის ვალიდური საბანკო გადარიცხვის ქვითარი")
+                if not iban_ok:
+                    reasons.append(f"მიმღები ანგარიში ({extracted_iban or 'უცნობი'}) არ ემთხვევა მაღაზიის IBAN-ს ({clean_expected_iban})")
+                if not amount_ok:
+                    reasons.append(f"გადარიცხული თანხა ({extracted_amount:.2f} GEL) არ ემთხვევა შეკვეთის თანხას ({expected_amount:.2f} GEL)")
+                result["reason"] = "; ".join(reasons)
 
             return result
         except Exception as e:
             logger.error(f"Gemini Vision Receipt verification error: {e}", exc_info=True)
             return {
-                "is_valid_receipt": True,
-                "is_match": True,
-                "confidence": "low",
-                "extracted_amount": expected_amount,
-                "extracted_iban": expected_iban,
-                "reason": f"AI ანალიზის შეცდომა: {str(e)}"
+                "is_valid_receipt": False,
+                "is_match": False,
+                "confidence": "none",
+                "extracted_amount": 0.0,
+                "extracted_iban": "",
+                "reason": f"AI-მ ვერ შეძლო ქვითრის ავტომატური ამოკითხვა: {str(e)}"
             }
 
 gemini_service = GeminiService()

@@ -660,8 +660,10 @@ async def handle_text_or_multimedia(update: Update, context: ContextTypes.DEFAUL
                     )
 
                     logger.info(f"Vision receipt verification for #{target_order.order_number}: {vision_res}")
-                    is_verified = vision_res.get("is_match", True)
+                    is_verified = bool(vision_res.get("is_match") is True)
                     customer_display = f"{user.first_name} (@{user.username})" if user.username else user.first_name
+                    extracted_amount = float(vision_res.get("extracted_amount", 0.0) or 0.0)
+                    extracted_iban = str(vision_res.get("extracted_iban", "") or "არ ჩანს")
 
                     if is_verified:
                         target_order.payment_status = "verified"
@@ -670,8 +672,8 @@ async def handle_text_or_multimedia(update: Update, context: ContextTypes.DEFAUL
                         await message.reply_text(
                             f"✅ **ქვითარი წარმატებით დამოწმდა AI-ის მიერ!**\n\n"
                             f"🔖 შეკვეთის ნომერი: `{target_order.order_number}`\n"
-                            f"💰 დადასტურებული თანხა: **{vision_res.get('extracted_amount', expected_amount):.2f} GEL**\n"
-                            f"🏦 მიმღები ანგარიში: `{vision_res.get('extracted_iban', expected_iban)}`\n\n"
+                            f"💰 დადასტურებული თანხა: **{extracted_amount:.2f} GEL**\n"
+                            f"🏦 მიმღები ანგარიში: `{extracted_iban}`\n\n"
                             f"შეკვეთა გადავიდა მზადების ეტაპზე. მადლობა Geosteam-ის არჩევისთვის! ❤️",
                             parse_mode="Markdown"
                         )
@@ -681,66 +683,73 @@ async def handle_text_or_multimedia(update: Update, context: ContextTypes.DEFAUL
                             "order_id": target_order.id,
                             "order_number": target_order.order_number,
                             "receipt_url": target_order.receipt_image_url,
-                            "extracted_amount": vision_res.get("extracted_amount", expected_amount),
-                            "extracted_iban": vision_res.get("extracted_iban", expected_iban)
-                        })
-                    else:
-                        # Fraud / Mismatch detected -> Auto-Add to Blacklist
-                        mismatch_reason = vision_res.get("reason", "არასწორი ანგარიში ან თანხის შეუსაბამობა")
-                        target_order.payment_status = "fraud_suspected"
-                        customer.is_blacklisted = True
-
-                        res_bl = await session.execute(select(BlacklistUser).where(BlacklistUser.telegram_id == user.id))
-                        existing_bl = res_bl.scalars().first()
-                        if not existing_bl:
-                            bl_entry = BlacklistUser(
-                                telegram_id=user.id,
-                                username=user.username or "",
-                                full_name=customer_display,
-                                reason=f"ქვითრის შეუსაბამობა #{target_order.order_number}: {mismatch_reason}",
-                                receipt_url=uploaded_media_url
-                            )
-                            session.add(bl_entry)
-
-                        await session.commit()
-
-                        # Broadcast fraud alert to Admin Panel
-                        await ws_manager.broadcast({
-                            "type": "receipt_fraud_alert",
-                            "customer_id": user.id,
-                            "customer_name": customer_display,
-                            "order_number": target_order.order_number,
-                            "extracted_amount": vision_res.get("extracted_amount", 0.0),
-                            "expected_amount": expected_amount,
-                            "extracted_iban": vision_res.get("extracted_iban", ""),
-                            "expected_iban": expected_iban,
-                            "reason": mismatch_reason,
-                            "receipt_url": uploaded_media_url
+                            "extracted_amount": extracted_amount,
+                            "extracted_iban": extracted_iban
                         })
 
-                        # Notify Admins via Telegram
-                        admin_alert_text = (
-                            f"🚨 **ყურადღება: ყალბი / შეუსაბამო ქვითარი!**\n\n"
-                            f"👤 მომხმარებელი: {customer_display} (ID: `{user.id}`)\n"
+                        # Notify Admin of successful receipt
+                        admin_caption = (
+                            f"✅ **საბანკო ქვითარი დადასტურდა (AI)!**\n\n"
                             f"🔖 შეკვეთა: `#{target_order.order_number}`\n"
-                            f"💰 მოსალოდნელი: **{expected_amount:.2f} GEL** | IBAN: `{expected_iban}`\n"
-                            f"❌ ქვითარზე: **{vision_res.get('extracted_amount', 0.0):.2f} GEL** | IBAN: `{vision_res.get('extracted_iban', 'N/A')}`\n"
-                            f"📝 AI დასკვნა: {mismatch_reason}\n\n"
-                            f"🚫 **მომხმარებელი ავტომატურად დაემატა Black List-ში!**"
+                            f"👤 მომხმარებელი: {customer_display} (ID: `{user.id}`)\n"
+                            f"💰 თანხა: **{extracted_amount:.2f} GEL**\n"
+                            f"🏦 ანგარიში: `{extracted_iban}`"
                         )
                         if st_settings and st_settings.admin_telegram_ids:
                             admin_ids = [aid.strip() for aid in st_settings.admin_telegram_ids.split(",") if aid.strip().isdigit()]
                             for aid in admin_ids:
                                 try:
-                                    await context.bot.send_message(chat_id=int(aid), text=admin_alert_text, parse_mode="Markdown")
-                                except Exception:
-                                    pass
+                                    with open(fp, "rb") as admin_rf:
+                                        await context.bot.send_photo(chat_id=int(aid), photo=admin_rf, caption=admin_caption, parse_mode="Markdown")
+                                except Exception as a_err:
+                                    logger.warning(f"Could not send receipt photo to admin {aid}: {a_err}")
+                    else:
+                        mismatch_reason = vision_res.get("reason", "არასწორი ანგარიში ან თანხის შეუსაბამობა")
+                        target_order.payment_status = "mismatch_pending_operator"
+                        await session.commit()
+
+                        # Broadcast fraud / mismatch alert to Admin Panel
+                        await ws_manager.broadcast({
+                            "type": "receipt_fraud_alert",
+                            "customer_id": user.id,
+                            "customer_name": customer_display,
+                            "order_number": target_order.order_number,
+                            "extracted_amount": extracted_amount,
+                            "expected_amount": expected_amount,
+                            "extracted_iban": extracted_iban,
+                            "expected_iban": expected_iban,
+                            "reason": mismatch_reason,
+                            "receipt_url": uploaded_media_url
+                        })
+
+                        # Notify Admins via Telegram with photo
+                        admin_alert_text = (
+                            f"⚠️ **ყურადღება: შეუსაბამო ქვითარი შეკვეთაზე #{target_order.order_number}!**\n\n"
+                            f"👤 მომხმარებელი: {customer_display} (ID: `{user.id}`)\n"
+                            f"💰 მოსალოდნელი თანხა: **{expected_amount:.2f} GEL** | IBAN: `{expected_iban}`\n"
+                            f"❌ ქვითარზე ამოიკითხა: **{extracted_amount:.2f} GEL** | IBAN: `{extracted_iban}`\n"
+                            f"📝 AI შეფასება: {mismatch_reason}\n\n"
+                            f"ℹ️ გადაამოწმეთ ქვითარი ადმინ პანელში ან დაუკავშირდით მომხმარებელს."
+                        )
+                        if st_settings and st_settings.admin_telegram_ids:
+                            admin_ids = [aid.strip() for aid in st_settings.admin_telegram_ids.split(",") if aid.strip().isdigit()]
+                            for aid in admin_ids:
+                                try:
+                                    with open(fp, "rb") as admin_rf:
+                                        await context.bot.send_photo(chat_id=int(aid), photo=admin_rf, caption=admin_alert_text, parse_mode="Markdown")
+                                except Exception as a_err:
+                                    logger.warning(f"Could not send alert photo to admin {aid}: {a_err}")
 
                         await message.reply_text(
-                            f"⚠️ **ქვითრის გადამოწმების შეცდომა!**\n\n"
-                            f"AI სისტემამ ქვითარში დააფიქსირა შეუსაბამობა:\n"
+                            f"⚠️ **ქვითარი ვერ დადასტურდა!**\n\n"
+                            f"AI სისტემის მიერ დაფიქსირებული შეუსაბამობა:\n"
                             f"• {mismatch_reason}\n\n"
-                            f"თუ შეცდომით გამოგზავნეთ არასწორი ქვითარი ან გსურთ გარკვევა, გთხოვთ დაუკავშირდეთ ოპერატორს ღილაკით: 🙋‍♂️ ოპერატორი.",
+                            f"📌 **ჩვენი სწორი რეკვიზიტებია:**\n"
+                            f"🏦 ბანკი: `{st_settings.bank_name if st_settings else 'BOG'}`\n"
+                            f"💳 IBAN: `{expected_iban}`\n"
+                            f"💰 გადასარიცხი თანხა: **{expected_amount:.2f} GEL**\n"
+                            f"👤 მიმღები: `{expected_recip}`\n\n"
+                            f"გთხოვთ გადმოაგზავნოთ სწორი ქვითარი ან მოგვწერეთ / დააჭირეთ ოპერატორის ღილაკს 🙋‍♂️.",
                             parse_mode="Markdown"
                         )
 
