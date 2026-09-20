@@ -265,7 +265,7 @@ class GeminiService:
             config = types.GenerateContentConfig(
                 system_instruction=system_instruction,
                 temperature=temperature,
-                max_output_tokens=1000,
+                max_output_tokens=8192,
                 tools=[register_customer_order],
                 automatic_function_calling=types.AutomaticFunctionCallingConfig(
                     disable=True
@@ -289,11 +289,6 @@ class GeminiService:
                     )
                     if response:
                         self.model_name = model_cand
-                        break
-                except Exception as ex:
-                    last_err = ex
-                    logger.warning(f"Model {model_cand} call failed: {ex}. Trying next model...")
-                    if response:
                         break
                 except Exception as ex:
                     last_err = ex

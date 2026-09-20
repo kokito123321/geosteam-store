@@ -877,5 +877,19 @@ async def handle_text_or_multimedia(update: Update, context: ContextTypes.DEFAUL
             }
         })
 
-        # Send response to customer
-        await message.reply_text(ai_reply, parse_mode="Markdown")
+        # Send response to customer safely
+        try:
+            if len(ai_reply) > 4000:
+                chunks = [ai_reply[i:i+4000] for i in range(0, len(ai_reply), 4000)]
+                for chunk in chunks:
+                    await message.reply_text(chunk, parse_mode="Markdown")
+            else:
+                await message.reply_text(ai_reply, parse_mode="Markdown")
+        except Exception as send_err:
+            logger.warning(f"Failed to send Markdown message, retrying plain text: {send_err}")
+            if len(ai_reply) > 4000:
+                chunks = [ai_reply[i:i+4000] for i in range(0, len(ai_reply), 4000)]
+                for chunk in chunks:
+                    await message.reply_text(chunk)
+            else:
+                await message.reply_text(ai_reply)

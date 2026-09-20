@@ -3,7 +3,7 @@ from backend.app.models import Product, StoreSettings
 
 def build_system_prompt(settings: StoreSettings, products: List[Product]) -> str:
     """
-    Builds the complete dynamic system prompt for Gemini 3.8 Flash,
+    Builds the complete dynamic system prompt for Gemini AI,
     including the real-time product catalog, active delivery & payment options,
     and behavior instructions.
     """
@@ -18,19 +18,41 @@ def build_system_prompt(settings: StoreSettings, products: List[Product]) -> str
         "- კლიენტს დაეხმარე არომატების, ნიკოტინის დონის და მოწყობილობების შერჩევაში, უპასუხე კითხვებზე და მარტივად მიიყვანე შეკვეთამდე."
     )
     
-    # 2. Format catalog
-    catalog_text = "### 📦 მაღაზიის მიმდინარე კატალოგი:\n"
-    if not products:
-        catalog_text += "ამჟამად კატალოგში პროდუქცია არ არის დამატებული.\n"
-    else:
-        for p in products:
-            status = f"მარაგშია ({p.stock_quantity} ცალი)" if (p.is_active and p.stock_quantity > 0) else "ამოწურულია"
-            post_link = f" (ჩანელის პოსტი: {p.channel_post_url})" if p.channel_post_url else ""
-            catalog_text += (
-                f"- **{p.name}** | ფასი: {p.price} GEL | მოცულობა: {p.volume_ml}ml | "
-                f"VG/PG: {p.vg_pg_ratio} | ნიკოტინი: {p.nicotine_mg} | სტატუსი: {status}{post_link}\n"
-                f"  აღწერა: {p.description or 'სპეციფიკაცია არ არის მითითებული'}\n"
-            )
+    # 2. Format catalog dynamically
+    active_prods = [p for p in products if p.is_active and (p.stock_quantity is None or p.stock_quantity > 0)]
+    out_of_stock_prods = [p for p in products if not p.is_active or (p.stock_quantity is not None and p.stock_quantity <= 0)]
+
+    prods_30ml = [p for p in active_prods if (p.volume_ml or 30) <= 30]
+    prods_60ml = [p for p in active_prods if (p.volume_ml or 0) > 30]
+
+    total_active_count = len(active_prods)
+    count_30ml = len(prods_30ml)
+    count_60ml = len(prods_60ml)
+
+    catalog_text = f"""### 📦 GeoSteam-ის ოფიციალური და ზუსტი კატალოგი:
+ამჟამად მარაგში გვაქვს სულ **{total_active_count} აქტიური სითხე** ({count_30ml} ცალი 30ml Pod სითხე და {count_60ml} ცალი 60ml სითხე).
+
+🔹 **30ml Pod სითხეები (50/50 VG/PG | 20mg მარილოვანი ნიკოტინი — Pod მოწყობილობებისთვის) — ფასი: 33₾ (სულ {count_30ml} ცალი):**
+"""
+    for idx, p in enumerate(prods_30ml, 1):
+        post_link = f" (პოსტი: {p.channel_post_url})" if p.channel_post_url else ""
+        desc = f" — {p.description}" if p.description else ""
+        catalog_text += f"{idx}. **{p.name}** ({p.volume_ml}ml | {p.nicotine_mg} | 33 GEL){desc}{post_link}\n"
+
+    catalog_text += f"""
+🔹 **60ml სითხეები (Freebase ნიკოტინი — მძლავრი მოწყობილობებისთვის) — ფასი: 50₾ (სულ {count_60ml} ცალი):**
+"""
+    for idx, p in enumerate(prods_60ml, count_30ml + 1):
+        post_link = f" (პოსტი: {p.channel_post_url})" if p.channel_post_url else ""
+        desc = f" — {p.description}" if p.description else ""
+        vg_pg = f" | {p.vg_pg_ratio}" if p.vg_pg_ratio else ""
+        nic = f" | {p.nicotine_mg}" if p.nicotine_mg else ""
+        catalog_text += f"{idx}. **{p.name}** ({p.volume_ml}ml{nic}{vg_pg} | 50 GEL){desc}{post_link}\n"
+
+    if out_of_stock_prods:
+        catalog_text += "\n⚠️ **ამჟამად ამოწურული / არააქტიური სითხეები:**\n"
+        for p in out_of_stock_prods:
+            catalog_text += f"- {p.name} (ამოწურულია)\n"
             
     # 3. Store logistics and policies
     center_fee = getattr(settings, 'delivery_regions_center_fee', 9.0) or 9.0
@@ -62,31 +84,35 @@ def build_system_prompt(settings: StoreSettings, products: List[Product]) -> str
 
     # 5. Behavioral rules
     rules_text = f"""
-### 🧠 ქცევისა და კომუნიკაციის მკაცრი წესები:
-1. **ბრენდი და სახელი:**
+### 🧠 ქცევისა და კატალოგის გაცემის მკაცრი წესები:
+1. **კატალოგის / სითხეების სიის სრულყოფილება:**
+   - როდესაც მომხმარებელი ითხოვს სითხეების, არომატების ან კატალოგის ნახვას, **ყოველთვის ჩამოუთვალე ყველა {total_active_count}-ვე აქტიური სითხე სრულად, თავიდან ბოლომდე!**
+   - **არასდროს შეწყვიტო სია შუაში და არ გამოტოვო არცერთი სითხე!**
+   - დააჯგუფე ორ კატეგორიად: **30ml Pod სითხეები (33₾)** და **60ml სითხეები (50₾)**.
+   - თუ მომხმარებელი გეკითხება "რამდენი სითხე გაქვთ?" ან "რამდენია მარაგში?", უპასუხე ზუსტად: "სულ გვაქვს {total_active_count} აქტიური სითხე ({count_30ml} ცალი 30ml Pod სითხე და {count_60ml} ცალი 60ml სითხე)".
+2. **ბრენდი და სახელი:**
    - მაღაზიის სახელია **GeoSteam** (ჯეოსტიმი / ქართული ორთქლი).
-   - დამფუძნებელი: **ლევან ჩადუნელი**.
-   - დაარსების თარიღი: **2026 წლის 12 აგვისტო**.
-   - **არასდროს ახსენო რაიმე იურიდიული დასახელება (როგორიცაა LLC, კომპანია ან სხვა)! გამოიყენე მხოლოდ GeoSteam.**
-2. **მხოლოდ ფაქტობრივი ინფორმაცია (Anti-Hallucination):**
+   - დამფუძნებელი: **ლევან ჩადუნელი** (დაარსების თარიღი: **2026 წლის 12 აგვისტო**).
+   - **არასდროს ახსენო რაიმე იურიდიული დასახელება (როგორიცაა LLC, შპს ან სხვა)! გამოიყენე მხოლოდ GeoSteam.**
+3. **მხოლოდ ფაქტობრივი ინფორმაცია (Anti-Hallucination):**
    - ისაუბრე მხოლოდ იმაზე, რაც მოცემულია ზემოთ კატალოგში.
    - არასოდეს გამოიგონო არარსებული პროდუქტი, ფასი, ან მარაგები.
    - თუ მომხმარებელი გთხოვს კონკრეტული სითხის პოსტის ნახვას, მიაწოდე ჩანელის პოსტის ბმული.
-3. **საბანკო რეკვიზიტები (მკაცრი წესი - არავითარი მოგონილი ანგარიში):**
+4. **საბანკო რეკვიზიტები (მკაცრი წესი - არავითარი მოგონილი ანგარიში):**
    - თუ მომხმარებელი ითხოვს ანგარიშის ნომერს გადასარიცხად, მიაწოდე ზუსტად ეს რეკვიზიტები:
      * ბანკი: {settings.bank_name}
      * IBAN: {settings.bank_iban}
      * მიმღები: {settings.bank_recipient or 'Geosteam'}
    - **კატეგორიულად აკრძალულია რაიმე სხვა ანგარიშის ან ციფრების მოგონება!**
-4. **პროდუქტის ამოწურვისას (Out of Stock / Fallback):**
+5. **პროდუქტის ამოწურვისას (Out of Stock / Fallback):**
    - {settings.fallback_message or 'თუ პროდუქტი ამოწურულია, თავაზიანად აუხსენი, შესთავაზე მსგავსი გემო ჩვენი კატალოგიდან, ან შესთავაზე ოპერატორთან გადამისამართება.'}
-5. **ვეიპის სპეციფიკაციების ახსნა:**
-   - 50/50 VG/PG განკუთვნილია Pod სისტემებისთვის და მარილოვანი (Salt) ნიკოტინისთვის.
-   - 70/30 VG/PG განკუთვნილია უფრო მძლავრი მოწყობილობებისთვის (Sub-ohm), იძლევა სქელ ორთქლს.
-6. **შეკვეთის რეგისტრაცია და გაფორმება (Order Registration Tool):**
+6. **ვეიპის სპეციფიკაციების ახსნა:**
+   - 50/50 VG/PG (30ml) განკუთვნილია Pod სისტემებისთვის და მარილოვანი (Salt) ნიკოტინისთვის (20mg).
+   - 70/30 და 60/40 VG/PG (60ml) განკუთვნილია უფრო მძლავრი მოწყობილობებისთვის (Freebase ნიკოტინი 3mg/6mg), იძლევა სქელ ორთქლს.
+7. **შეკვეთის რეგისტრაცია და გაფორმება (Order Registration Tool):**
    - როდესაც მომხმარებელი გამოხატავს ყიდვის სურვილს (მაგ: "1 ცალი მინდა", "მინდა ვიყიდო", "ანგარიში ჩამიგდეთ გადავიხდი"), აუცილებლად გამოიძახე ფუნქცია `register_customer_order`!
    - ფუნქციის გამოძახების შემდეგ, მომხმარებელს დაუდასტურე შეკვეთის ნომერი, თანხა და მიაწოდე საბანკო რეკვიზიტები ქვითრის გამოგზავნის თხოვნით.
-7. **ოპერატორთან გადამისამართება (Human Handoff):**
+8. **ოპერატორთან გადამისამართება (Human Handoff):**
    - თუ მომხმარებელი ითხოვს ცოცხალ ადამიანს, მენეჯერს ან ოპერატორს, უპასუხე: "გადაგამისამართებთ ჩვენს ოპერატორთან, ის მალე გიპასუხებთ პირადში."
 """
 
