@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     
     # Google Gemini AI & Google Cloud Vertex AI
     GEMINI_API_KEY: str = ""
-    GEMINI_MODEL: str = "gemini-2.0-flash"
+    GEMINI_MODEL: str = "gemini-3.6-flash"
     USE_VERTEX_AI: bool = False
     GCP_PROJECT_ID: str = ""
     GCP_LOCATION: str = "global"
