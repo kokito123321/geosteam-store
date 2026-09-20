@@ -15,9 +15,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy project files
 COPY . .
 
-# Expose port (Google Cloud Run injects $PORT, defaults to 8080 or 8000)
-ENV PORT=8000
-EXPOSE 8000
+# Expose default port
+EXPOSE 8000 10000
 
 # Start command
 CMD ["python", "run.py"]
