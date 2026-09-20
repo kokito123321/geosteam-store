@@ -10,10 +10,31 @@ from backend.app.config import settings
 
 logger = logging.getLogger(__name__)
 
+def get_async_database_url(url: str) -> str:
+    if not url:
+        return f"sqlite+aiosqlite:///{settings.BASE_DIR / 'store.db'}"
+    raw = url.strip()
+    if raw.startswith("postgres://"):
+        return raw.replace("postgres://", "postgresql+asyncpg://", 1)
+    if raw.startswith("postgresql://") and not raw.startswith("postgresql+asyncpg://"):
+        return raw.replace("postgresql://", "postgresql+asyncpg://", 1)
+    return raw
+
+DB_URL = get_async_database_url(settings.DATABASE_URL)
+IS_SQLITE = "sqlite" in DB_URL
+
+engine_kwargs = {}
+if IS_SQLITE:
+    engine_kwargs["connect_args"] = {"check_same_thread": False}
+else:
+    engine_kwargs["pool_size"] = 10
+    engine_kwargs["max_overflow"] = 20
+    engine_kwargs["pool_pre_ping"] = True
+
 engine = create_async_engine(
-    settings.DATABASE_URL,
+    DB_URL,
     echo=False,
-    connect_args={"check_same_thread": False} if "sqlite" in settings.DATABASE_URL else {}
+    **engine_kwargs
 )
 
 async_session_maker = async_sessionmaker(

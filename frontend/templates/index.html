@@ -6,8 +6,9 @@
     <title>მართვის პანელი | {{ app_name }}</title>
     <link href="https://fonts.googleapis.com/css2?family=FiraGO:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/static/css/style.css">
-    <!-- Telegram Mini App JS SDK -->
+    <!-- Telegram Mini App JS SDK & Chart.js -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
     <div class="toast-container" id="toastContainer"></div>
@@ -22,7 +23,7 @@
 
             <nav class="sidebar-nav">
                 <a class="nav-item active" data-tab="dashboard">
-                    <span>📊</span> მიმოხილვა
+                    <span>📊</span> მიმოხილვა & ანალიტიკა
                 </a>
                 <a class="nav-item" data-tab="products">
                     <span>📦</span> პროდუქცია
@@ -49,7 +50,7 @@
                     <span class="nav-badge" id="blacklistBadge" style="display: none; background: #ef4444;">0</span>
                 </a>
                 <a class="nav-item" data-tab="settings">
-                    <span>⚙️</span> პარამეტრები
+                    <span>⚙️</span> პარამეტრები & Backup
                 </a>
             </nav>
 
@@ -65,8 +66,9 @@
         <!-- Main Content View -->
         <main class="main-wrapper">
             <header class="topbar">
-                <div class="page-title" id="pageTitle">მიმოხილვა</div>
+                <div class="page-title" id="pageTitle">მიმოხილვა & ანალიტიკა</div>
                 <div class="topbar-actions">
+                    <button class="btn btn-secondary btn-sm" onclick="triggerManualBackup()" title="მონაცემთა ბაზის დარეზერვება და გაგზავნა">💾 Backup Telegram-ში</button>
                     <button class="btn btn-secondary btn-sm" onclick="openMobileAccessModal()" title="ტელეფონში გახსნა">📱 მობილური / Mini App</button>
                     <button class="btn btn-primary btn-sm" id="quickNewProductBtn">+ ახალი სითხე</button>
                     <span class="badge badge-success" id="botStatusBadge">● ბოტი აქტიურია</span>
@@ -76,6 +78,7 @@
             <div class="content-body">
                 <!-- 1. DASHBOARD TAB -->
                 <section id="tab-dashboard" class="tab-pane active">
+                    <!-- Top Metric Cards -->
                     <div class="metrics-grid">
                         <div class="metric-card">
                             <div class="metric-icon">💰</div>
@@ -111,10 +114,89 @@
                             <div class="metric-icon">👥</div>
                             <div class="metric-data">
                                 <div class="metric-header-row">
-                                    <h3>მომხმარებელთა ჩატები</h3>
+                                    <h3>მომხმარებლები & ჩატები</h3>
                                     <button class="btn-icon-reset" onclick="confirmResetMetric('chats')" title="ჩატების ისტორიის განულება">↺ განულება</button>
                                 </div>
                                 <p id="metricTotalChats">0</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Financial Summary Period Cards -->
+                    <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin-bottom: 1.5rem;">
+                        <div style="background: rgba(99, 102, 241, 0.08); border: 1px solid rgba(99, 102, 241, 0.2); border-radius: 12px; padding: 1rem;">
+                            <span style="font-size: 0.8rem; color: #94a3b8; text-transform: uppercase;">📅 დღევანდელი შემოსავალი</span>
+                            <h4 id="statTodayRevenue" style="font-size: 1.3rem; margin: 0.35rem 0 0; color: #6366f1;">0.00 GEL</h4>
+                        </div>
+                        <div style="background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.2); border-radius: 12px; padding: 1rem;">
+                            <span style="font-size: 0.8rem; color: #94a3b8; text-transform: uppercase;">📈 ბოლო 7 დღე</span>
+                            <h4 id="statWeekRevenue" style="font-size: 1.3rem; margin: 0.35rem 0 0; color: #10b981;">0.00 GEL</h4>
+                        </div>
+                        <div style="background: rgba(245, 158, 11, 0.08); border: 1px solid rgba(245, 158, 11, 0.2); border-radius: 12px; padding: 1rem;">
+                            <span style="font-size: 0.8rem; color: #94a3b8; text-transform: uppercase;">🗓️ ბოლო 30 დღე</span>
+                            <h4 id="statMonthRevenue" style="font-size: 1.3rem; margin: 0.35rem 0 0; color: #f59e0b;">0.00 GEL</h4>
+                        </div>
+                        <div style="background: rgba(168, 85, 247, 0.08); border: 1px solid rgba(168, 85, 247, 0.2); border-radius: 12px; padding: 1rem;">
+                            <span style="font-size: 0.8rem; color: #94a3b8; text-transform: uppercase;">💳 საშუალო ჩეკი (AOV)</span>
+                            <h4 id="statAvgOrderValue" style="font-size: 1.3rem; margin: 0.35rem 0 0; color: #a855f7;">0.00 GEL</h4>
+                        </div>
+                    </div>
+
+                    <!-- Visual Charts Section (Revenue Dynamics & Top Flavors) -->
+                    <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 1.25rem; margin-bottom: 1.5rem;">
+                        <!-- Chart 1: Revenue & Orders Timeline -->
+                        <div class="panel-card" style="margin-bottom: 0;">
+                            <div class="panel-header">
+                                <div class="panel-title">📈 შემოსავლებისა და შეკვეთების დინამიკა (14 დღე)</div>
+                            </div>
+                            <div style="height: 280px; position: relative;">
+                                <canvas id="revenueTrendChart"></canvas>
+                            </div>
+                        </div>
+
+                        <!-- Chart 2: Top Selling Flavors -->
+                        <div class="panel-card" style="margin-bottom: 0;">
+                            <div class="panel-header">
+                                <div class="panel-title">🔥 ტოპ-სითხეები & არომატები</div>
+                            </div>
+                            <div style="height: 280px; position: relative;">
+                                <canvas id="topFlavorsChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Secondary Analytics Grid (Order Status Distribution & Customer Growth) -->
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; margin-bottom: 1.5rem;">
+                        <!-- Chart 3: Order Status Breakdown -->
+                        <div class="panel-card" style="margin-bottom: 0;">
+                            <div class="panel-header">
+                                <div class="panel-title">🎯 შეკვეთების სტატუსების განაწილება</div>
+                            </div>
+                            <div style="height: 220px; position: relative;">
+                                <canvas id="orderStatusChart"></canvas>
+                            </div>
+                        </div>
+
+                        <!-- Customer Retention & Growth Card -->
+                        <div class="panel-card" style="margin-bottom: 0;">
+                            <div class="panel-header">
+                                <div class="panel-title">👥 მომხმარებელთა ზრდა & ლოიალობა</div>
+                            </div>
+                            <div style="display: flex; flex-direction: column; justify-content: center; height: 220px; gap: 1rem;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.75rem 1rem; background: var(--bg-card); border-radius: 8px; border: 1px solid var(--border);">
+                                    <div>
+                                        <span style="color: #94a3b8; font-size: 0.85rem;">ახალი კლიენტები (ამ კვირაში)</span>
+                                        <h4 id="statNewCustomersWeek" style="font-size: 1.4rem; margin: 0; color: #38bdf8;">0</h4>
+                                    </div>
+                                    <span style="font-size: 1.8rem;">✨</span>
+                                </div>
+                                <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.75rem 1rem; background: var(--bg-card); border-radius: 8px; border: 1px solid var(--border);">
+                                    <div>
+                                        <span style="color: #94a3b8; font-size: 0.85rem;">განმეორებითი მყიდველები (Repeat Rate)</span>
+                                        <h4 id="statRepeatRate" style="font-size: 1.4rem; margin: 0; color: #10b981;">0%</h4>
+                                    </div>
+                                    <span style="font-size: 1.8rem;">🔁</span>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -692,6 +774,27 @@
                                 <button type="button" class="btn btn-secondary" onclick="testEmailConnection()">📧 სატესტო იმეილის გაგზავნა</button>
                             </div>
                         </form>
+                    </div>
+
+                    <!-- Database Backup & Persistence Card -->
+                    <div class="panel-card" style="margin-top: 1.5rem;">
+                        <div class="panel-header">
+                            <div>
+                                <div class="panel-title">💾 მონაცემთა ბაზის დარეზერვება (Backup) & უსაფრთხოება</div>
+                                <div style="font-size: 0.85rem; color: var(--text-muted); margin-top: 4px;">
+                                    სისტემა ყოველდღიურად ავტომატურად აგზავნის სრულ სარეზერვო ასლს ადმინისტრატორის Telegram-ში.
+                                </div>
+                            </div>
+                            <span class="badge badge-success">● Auto-Backup აქტიურია</span>
+                        </div>
+                        <div style="display: flex; gap: 1rem; align-items: center; margin-top: 1rem; flex-wrap: wrap;">
+                            <button type="button" class="btn btn-primary" id="btnManualBackup" onclick="triggerManualBackup()">
+                                🚀 Backup-ის გენერირება და Telegram-ში გაგზავნა
+                            </button>
+                            <a href="/api/settings/backup/download" class="btn btn-secondary" target="_blank" download>
+                                📥 Backup JSON ფაილის ჩამოტვირთვა (.json)
+                            </a>
+                        </div>
                     </div>
                 </section>
 

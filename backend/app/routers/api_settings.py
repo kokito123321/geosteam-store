@@ -219,3 +219,35 @@ async def test_email_connection(
             "status": "error",
             "message": f"იმეილის გაგზავნა ვერ მოხერხდა. გადაამოწმეთ SMTP Host ({host}), Port, მომხმარებელი და პაროლი."
         }
+
+@router.post("/backup/create")
+async def trigger_manual_backup(
+    current_user: AdminUser = Depends(get_current_user)
+):
+    """Triggers an immediate database backup and sends it to admin Telegram accounts."""
+    from backend.app.services.backup_service import backup_service
+    success = await backup_service.send_backup_to_telegram()
+    if success:
+        return {
+            "status": "success",
+            "message": "მონაცემთა ბაზის სარეზერვო ასლი (Backup) წარმატებით შეიქმნა და გაიგზავნა თქვენს Telegram-ში!"
+        }
+    else:
+        return {
+            "status": "partial_success",
+            "message": "სარეზერვო ფაილი შეიქმნა სერვერზე, მაგრამ Telegram-ში გაგზავნისას დაფიქსირდა შეფერხება. შეგიძლიათ ჩამოტვირთოთ ბრაუზერით."
+        }
+
+@router.get("/backup/download")
+async def download_backup_file(
+    current_user: AdminUser = Depends(get_current_user)
+):
+    """Generates and directly returns the JSON backup file for local download."""
+    from fastapi.responses import FileResponse
+    from backend.app.services.backup_service import backup_service
+    backup_file = await backup_service.create_backup_file()
+    return FileResponse(
+        path=str(backup_file),
+        filename=backup_file.name,
+        media_type="application/json"
+    )

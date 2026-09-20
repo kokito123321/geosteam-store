@@ -14,12 +14,13 @@ class ChannelPostScheduler:
     def __init__(self):
         self._running = False
         self._task: asyncio.Task = None
+        self._last_backup_date = None
 
     def start(self):
         if not self._running:
             self._running = True
             self._task = asyncio.create_task(self._run_loop())
-            logger.info("ChannelPostScheduler background worker started.")
+            logger.info("ChannelPostScheduler & Auto-Backup worker started.")
 
     async def stop(self):
         self._running = False
@@ -35,11 +36,24 @@ class ChannelPostScheduler:
         while self._running:
             try:
                 await self._check_and_publish_due_posts()
+                await self._check_daily_backup()
             except Exception as e:
                 logger.error(f"Error in ChannelPostScheduler loop: {e}", exc_info=True)
             
             # Wait 30 seconds before next check
             await asyncio.sleep(30)
+
+    async def _check_daily_backup(self):
+        """Performs automated daily database backup to Telegram at 04:00 UTC."""
+        now = datetime.utcnow()
+        # Trigger if not run today and hour is >= 4
+        if self._last_backup_date != now.date() and now.hour >= 4:
+            from backend.app.services.backup_service import backup_service
+            logger.info("Initiating automated daily database backup to Telegram...")
+            success = await backup_service.send_backup_to_telegram()
+            if success:
+                self._last_backup_date = now.date()
+                logger.info("Automated daily backup completed successfully.")
 
     async def _check_and_publish_due_posts(self):
         if not bot_manager.bot_app or not settings.TELEGRAM_CHANNEL_ID:

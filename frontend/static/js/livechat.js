@@ -118,6 +118,9 @@ function handleIncomingWSEvent(data) {
         if (currentPane && currentPane.id === 'tab-orders') loadOrders();
         if (currentPane && currentPane.id === 'tab-dashboard') loadDashboard();
     }
+    else if (data.type === 'dashboard_reset') {
+        loadDashboard();
+    }
     else if (data.type === 'receipt_fraud_alert') {
         playNotificationChime(220, 0.7); // Low alert tone
         showToast(`🚨 ყალბი/შეუსაბამო ქვითარი #${data.order_number}! კლიენტი ${data.customer_name} გადავიდა Black List-ში!`, 'danger');

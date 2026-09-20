@@ -76,56 +76,258 @@ function switchTab(tabId) {
     if (tabId === 'settings') loadStoreSettings();
 }
 
-// --- 1. DASHBOARD ---
+// --- 1. DASHBOARD & ANALYTICS ---
+let revenueChartInstance = null;
+let topFlavorsChartInstance = null;
+let orderStatusChartInstance = null;
+
 async function loadDashboard() {
     try {
-        const [prodRes, orderRes, chatRes] = await Promise.all([
-            fetch(`${API_BASE}/products`, { credentials: 'omit' }),
-            fetch(`${API_BASE}/orders`, { headers: getAuthHeaders() }),
-            fetch(`${API_BASE}/chat/threads`, { headers: getAuthHeaders() })
+        const [statsRes, analyticsRes] = await Promise.all([
+            fetch(`${API_BASE}/dashboard/stats`, { headers: getAuthHeaders() }),
+            fetch(`${API_BASE}/dashboard/analytics`, { headers: getAuthHeaders() })
         ]);
 
-        if (orderRes.status === 401) {
+        if (statsRes.status === 401 || analyticsRes.status === 401) {
             window.location.href = '/login';
             return;
         }
 
-        const products = await prodRes.json();
-        const orders = await orderRes.json();
-        const chats = await chatRes.json();
+        if (statsRes.ok) {
+            const stats = await statsRes.json();
+            const elRev = document.getElementById('metricTotalRevenue');
+            const elOrd = document.getElementById('metricTotalOrders');
+            const elProd = document.getElementById('metricActiveProducts');
+            const elChats = document.getElementById('metricTotalChats');
 
-        // Calculate metrics
-        let totalRevenue = 0;
-        orders.forEach(o => {
-            if (o.order_status !== 'cancelled') totalRevenue += o.total_amount;
-        });
+            if (elRev) elRev.innerText = `${(stats.total_revenue || 0).toFixed(2)} GEL`;
+            if (elOrd) elOrd.innerText = stats.total_orders || 0;
+            if (elProd) elProd.innerText = stats.active_products || 0;
+            if (elChats) elChats.innerText = stats.total_customers || 0;
 
-        document.getElementById('metricTotalRevenue').innerText = `${totalRevenue.toFixed(2)} GEL`;
-        document.getElementById('metricTotalOrders').innerText = orders.length;
-        document.getElementById('metricActiveProducts').innerText = products.filter(p => p.is_active).length;
-        document.getElementById('metricTotalChats').innerText = chats.length;
-
-        // Render Recent Orders
-        const tbody = document.getElementById('dashboardRecentOrders');
-        if (!orders.length) {
-            tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color: var(--text-muted);">შეკვეთები ჯერ არ არის</td></tr>';
-            return;
+            // Render Recent Orders
+            const tbody = document.getElementById('dashboardRecentOrders');
+            if (tbody) {
+                if (!stats.recent_orders || !stats.recent_orders.length) {
+                    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color: var(--text-muted);">შეკვეთები ჯერ არ არის</td></tr>';
+                } else {
+                    tbody.innerHTML = stats.recent_orders.map(o => `
+                        <tr>
+                            <td><strong>#${o.id}</strong></td>
+                            <td>კლიენტი #${o.customer_id || 'N/A'}</td>
+                            <td>${o.delivery_address || 'თბილისი'}</td>
+                            <td><strong>${(o.total_amount || 0).toFixed(2)} GEL</strong></td>
+                            <td>${o.delivery_method || 'courier'}</td>
+                            <td>${o.payment_method || 'cash'}</td>
+                            <td><span class="badge ${getStatusBadgeClass(o.order_status)}">${translateStatus(o.order_status)}</span></td>
+                        </tr>
+                    `).join('');
+                }
+            }
         }
 
-        tbody.innerHTML = orders.slice(0, 5).map(o => `
-            <tr>
-                <td><strong>#${o.order_number}</strong></td>
-                <td>${o.customer_name || 'N/A'}</td>
-                <td>${o.customer_phone || 'N/A'}</td>
-                <td><strong>${o.total_amount.toFixed(2)} GEL</strong></td>
-                <td>${o.delivery_method}</td>
-                <td>${o.payment_method}</td>
-                <td><span class="badge ${getStatusBadgeClass(o.order_status)}">${translateStatus(o.order_status)}</span></td>
-            </tr>
-        `).join('');
+        if (analyticsRes.ok) {
+            const analytics = await analyticsRes.json();
+            renderAnalyticsOverview(analytics);
+        }
 
     } catch (err) {
         console.error('Error loading dashboard:', err);
+    }
+}
+
+function renderAnalyticsOverview(data) {
+    if (!data) return;
+
+    // Financial summaries
+    const fin = data.financial_summary || {};
+    const elToday = document.getElementById('statTodayRevenue');
+    const elWeek = document.getElementById('statWeekRevenue');
+    const elMonth = document.getElementById('statMonthRevenue');
+    const elAov = document.getElementById('statAvgOrderValue');
+
+    if (elToday) elToday.innerText = `${(fin.today_revenue || 0).toFixed(2)} GEL`;
+    if (elWeek) elWeek.innerText = `${(fin.week_revenue || 0).toFixed(2)} GEL`;
+    if (elMonth) elMonth.innerText = `${(fin.month_revenue || 0).toFixed(2)} GEL`;
+    if (elAov) elAov.innerText = `${(fin.avg_order_value || 0).toFixed(2)} GEL`;
+
+    // Customer metrics
+    const cust = data.customer_metrics || {};
+    const elNewCust = document.getElementById('statNewCustomersWeek');
+    const elRepeatRate = document.getElementById('statRepeatRate');
+    if (elNewCust) elNewCust.innerText = cust.new_this_week || 0;
+    if (elRepeatRate) elRepeatRate.innerText = `${cust.repeat_rate_percent || 0}%`;
+
+    // Render Charts
+    renderCharts(data);
+}
+
+function renderCharts(data) {
+    if (typeof Chart === 'undefined') return;
+
+    // 1. Revenue & Orders Trend Chart (Line + Bar)
+    const trendCtx = document.getElementById('revenueTrendChart');
+    if (trendCtx && data.daily_trends) {
+        if (revenueChartInstance) revenueChartInstance.destroy();
+
+        const labels = data.daily_trends.map(d => d.date.slice(5));
+        const revenues = data.daily_trends.map(d => d.revenue);
+        const orderCounts = data.daily_trends.map(d => d.orders_count);
+
+        revenueChartInstance = new Chart(trendCtx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        type: 'line',
+                        label: 'შემოსავალი (GEL)',
+                        data: revenues,
+                        borderColor: '#6366f1',
+                        backgroundColor: 'rgba(99, 102, 241, 0.15)',
+                        borderWidth: 2.5,
+                        tension: 0.35,
+                        fill: true,
+                        yAxisID: 'y'
+                    },
+                    {
+                        type: 'bar',
+                        label: 'შეკვეთები (#)',
+                        data: orderCounts,
+                        backgroundColor: 'rgba(16, 185, 129, 0.65)',
+                        borderRadius: 6,
+                        yAxisID: 'y1'
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: { mode: 'index', intersect: false },
+                plugins: {
+                    legend: { labels: { color: '#94a3b8', font: { family: 'FiraGO' } } }
+                },
+                scales: {
+                    x: {
+                        ticks: { color: '#94a3b8' },
+                        grid: { color: 'rgba(255, 255, 255, 0.05)' }
+                    },
+                    y: {
+                        type: 'linear',
+                        position: 'left',
+                        ticks: { color: '#6366f1' },
+                        grid: { color: 'rgba(255, 255, 255, 0.05)' },
+                        title: { display: true, text: 'GEL', color: '#6366f1' }
+                    },
+                    y1: {
+                        type: 'linear',
+                        position: 'right',
+                        ticks: { color: '#10b981', precision: 0 },
+                        grid: { drawOnChartArea: false },
+                        title: { display: true, text: 'რაოდენობა', color: '#10b981' }
+                    }
+                }
+            }
+        });
+    }
+
+    // 2. Top Flavors / Liquids Chart (Doughnut)
+    const flavorsCtx = document.getElementById('topFlavorsChart');
+    if (flavorsCtx && data.top_products) {
+        if (topFlavorsChartInstance) topFlavorsChartInstance.destroy();
+
+        const topP = data.top_products.slice(0, 5);
+        const pLabels = topP.map(p => p.name.length > 20 ? p.name.slice(0, 20) + '...' : p.name);
+        const pCounts = topP.map(p => p.sales_count > 0 ? p.sales_count : 1);
+
+        topFlavorsChartInstance = new Chart(flavorsCtx, {
+            type: 'doughnut',
+            data: {
+                labels: pLabels,
+                datasets: [{
+                    data: pCounts,
+                    backgroundColor: [
+                        '#6366f1',
+                        '#ec4899',
+                        '#10b981',
+                        '#f59e0b',
+                        '#06b6d4'
+                    ],
+                    borderWidth: 0
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: { color: '#94a3b8', font: { family: 'FiraGO', size: 11 }, boxWidth: 12 }
+                    }
+                }
+            }
+        });
+    }
+
+    // 3. Order Status Breakdown (Pie)
+    const statusCtx = document.getElementById('orderStatusChart');
+    if (statusCtx && data.status_distribution) {
+        if (orderStatusChartInstance) orderStatusChartInstance.destroy();
+
+        const dist = data.status_distribution;
+        const labels = ['ჩაბარებული', 'მზადდება / Paid', 'ახალი', 'გაუქმებული'];
+        const values = [
+            dist.delivered || 0,
+            dist.processing || dist.paid || 0,
+            dist.new || 0,
+            dist.cancelled || 0
+        ];
+
+        orderStatusChartInstance = new Chart(statusCtx, {
+            type: 'pie',
+            data: {
+                labels: labels,
+                datasets: [{
+                    data: values.some(v => v > 0) ? values : [1],
+                    backgroundColor: [
+                        '#10b981',
+                        '#6366f1',
+                        '#f59e0b',
+                        '#ef4444'
+                    ],
+                    borderWidth: 0
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'right',
+                        labels: { color: '#94a3b8', font: { family: 'FiraGO', size: 11 } }
+                    }
+                }
+            }
+        });
+    }
+}
+
+async function triggerManualBackup() {
+    showToast('⏳ მზადდება მონაცემთა ბაზის Backup...', 'info');
+    try {
+        const res = await fetch(`${API_BASE}/settings/backup/create`, {
+            method: 'POST',
+            headers: getAuthHeaders()
+        });
+        const data = await res.json();
+        if (res.ok) {
+            showToast(data.message || 'Backup წარმატებით გაიგზავნა Telegram-ში!', 'success');
+        } else {
+            showToast(data.detail || 'შეცდომა Backup-ის შექმნისას', 'error');
+        }
+    } catch (err) {
+        console.error('Error triggering backup:', err);
+        showToast('სერვერთან კავშირის შეცდომა', 'error');
     }
 }
 
