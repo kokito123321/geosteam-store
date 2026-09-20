@@ -4,7 +4,7 @@ import random
 import uuid
 from pathlib import Path
 from datetime import datetime
-from telegram import Update
+from telegram import Update, ReplyKeyboardRemove
 from telegram.ext import ContextTypes
 from sqlalchemy import select
 from backend.app.database import async_session_maker
@@ -129,17 +129,13 @@ async def handle_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         res = await session.execute(select(StoreSettings).limit(1))
         st_settings = res.scalars().first()
 
-    is_admin = is_user_admin(user.id, st_settings)
-    webapp_url = settings.WEBAPP_URL
-    kb = get_main_keyboard(is_admin=is_admin, webapp_url=webapp_url)
-
     welcome_text = (
         f"გაუმარჯოს, {user.first_name}! 💨\n\n"
         f"GeoSteam-ში ხარ! 🇬🇪💨\n"
         f"ჩვენთან დაგხვდება უმაღლესი ხარისხის პრემიუმ ვეიპ სითხეები და მოწყობილობები.\n\n"
-        f"შეგიძლია მკითხო ნებისმიერი რამ არომატებზე, ნიკოტინის დონეზე, მიწოდებაზე ან პირდაპირ გამოიყენო ქვედა მენიუ 👇"
+        f"მომწერე რა გაინტერესებს — სითხეები, არომატები, ნიკოტინის დონე თუ მიწოდება, და სიამოვნებით დაგეხმარები!"
     )
-    await update.message.reply_text(welcome_text, reply_markup=kb, parse_mode="Markdown")
+    await update.message.reply_text(welcome_text, reply_markup=ReplyKeyboardRemove(), parse_mode="Markdown")
 
 async def handle_show_catalog(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Displays catalog of available products."""
@@ -375,17 +371,10 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
             customer.order_state = "IDLE"
             customer.temp_cart = "{}"
             await session.commit()
-            is_admin = is_user_admin(user.id, st_settings)
-            webapp_url = settings.WEBAPP_URL
-            await query.message.reply_text(
-                "❌ შეკვეთის პროცესი გაუქმდა.",
-                reply_markup=get_main_keyboard(is_admin, webapp_url)
-            )
+            await query.message.reply_text("❌ შეკვეთის პროცესი გაუქმდა.")
 
         elif data == "back_to_menu":
-            is_admin = is_user_admin(user.id, st_settings)
-            webapp_url = settings.WEBAPP_URL
-            await query.message.reply_text("მთავარი მენიუ:", reply_markup=get_main_keyboard(is_admin, webapp_url))
+            await query.message.reply_text("რით შემიძლია დაგეხმაროთ? მომწერეთ ნებისმიერი შეკითხვა 💨")
 
 async def finalize_order(message_target, customer: Customer, cart: dict, st_settings: StoreSettings, context: ContextTypes.DEFAULT_TYPE):
     """Saves the completed order to DB and triggers alerts."""
@@ -407,71 +396,85 @@ async def finalize_order(message_target, customer: Customer, cart: dict, st_sett
         delivery_fee = 0.0
         formatted_dm = "თბილისი (Yandex საკურიერო)"
 
-    total = (prod_price * qty) + delivery_fee
+    items_list = cart.get("items", [])
+    subtotal = float(cart.get("subtotal", 0.0))
+    total = subtotal + delivery_fee
+    order_number = f"ORD-{random.randint(10000, 99999)}"
+
+    # Create Order object
+    new_order = Order(
+        order_number=order_number,
+        customer_telegram_id=customer.telegram_id,
+        customer_name=f"{customer.first_name} {customer.last_name or ''}".strip(),
+        customer_phone=cart.get("phone", ""),
+        items_json=json.dumps(items_list),
+        total_amount=total,
+        delivery_method=formatted_dm,
+        delivery_address=cart.get("delivery_address", "თბილისი"),
+        payment_method=cart.get("payment_method", "cash"),
+        payment_status="pending",
+        order_status="new",
+        notes=cart.get("notes", "")
+    )
 
     async with async_session_maker() as session:
-        new_order = Order(
-            order_number=order_number,
-            customer_telegram_id=customer.telegram_id,
-            customer_name=f"{customer.first_name} {customer.last_name}".strip() or f"@{customer.username}",
-            customer_phone=customer.phone_number or cart.get("phone", ""),
-            items_json=json.dumps([{
-                "product_id": cart.get("product_id"),
-                "name": cart.get("name"),
-                "price": prod_price,
-                "quantity": qty,
-                "nicotine_mg": cart.get("nicotine_mg")
-            }]),
-            total_amount=total,
-            delivery_method=formatted_dm,
-            delivery_address=cart.get("delivery_address", "") or (st_settings.pickup_address if "თვითგატანა" in formatted_dm else ""),
-            location_lat=cart.get("location_lat"),
-            location_lng=cart.get("location_lng"),
-            payment_method=cart.get("payment_method", "cash"),
-            payment_status="pending",
-            order_status="new"
-        )
         session.add(new_order)
-
-        # Update product stock
-        if cart.get("product_id"):
-            res_p = await session.execute(select(Product).where(Product.id == cart.get("product_id")))
+        # Deduct stock
+        for it in items_list:
+            res_p = await session.execute(select(Product).where(Product.id == it["product_id"]))
             p = res_p.scalars().first()
-            if p and p.stock_quantity > 0:
-                p.stock_quantity -= qty
+            if p:
+                p.stock_quantity = max(0, p.stock_quantity - it.get("quantity", 1))
 
-        # Reset customer state or await receipt
-        res_c = await session.execute(select(Customer).where(Customer.id == customer.id))
-        cust = res_c.scalars().first()
-        if cust:
-            if new_order.payment_method == "bank_transfer":
-                cust.order_state = f"AWAITING_RECEIPT_{new_order.id}"
+        # Reset customer ordering state
+        res_c = await session.execute(select(Customer).where(Customer.telegram_id == customer.telegram_id))
+        c_db = res_c.scalars().first()
+        if c_db:
+            if cart.get("payment_method") == "bank_transfer":
+                c_db.order_state = f"AWAITING_RECEIPT_{new_order.id}"
             else:
-                cust.order_state = "IDLE"
-            cust.temp_cart = "{}"
+                c_db.order_state = "IDLE"
+            c_db.temp_cart = "{}"
 
         await session.commit()
         await session.refresh(new_order)
 
-    # Dispatch alerts (Telegram to Admin, WebSocket to Dashboard, Email)
-    await notify_new_order(new_order, st_settings, context.application)
+    # Dispatch alerts
+    try:
+        from backend.app.bot.bot_instance import bot_manager
+        await notify_new_order(new_order, st_settings, bot_manager.bot_app)
+    except Exception as e:
+        logger.error(f"Error in notify_new_order: {e}", exc_info=True)
 
-    # Customer confirmation text
+    # Broadcast event to Web Dashboard
+    await ws_manager.broadcast({
+        "type": "new_order",
+        "order": {
+            "id": new_order.id,
+            "order_number": new_order.order_number,
+            "customer_name": new_order.customer_name,
+            "total_amount": new_order.total_amount,
+            "status": new_order.order_status,
+            "created_at": new_order.created_at.isoformat()
+        }
+    })
+
+    # Confirmation text for customer
     payment_info = ""
     if new_order.payment_method == "bank_transfer":
         payment_info = (
-            f"\n💳 **საბანკო რეკვიზიტები გადარიცხვისთვის:**\n"
+            f"💳 **საბანკო რეკვიზიტები გადარიცხვისთვის:**\n"
             f"🏦 ბანკი: {st_settings.bank_name}\n"
-            f"💳 IBAN: `{st_settings.bank_iban}`\n"
-            f"👤 მიმღები: {st_settings.bank_recipient or 'Geosteam'}\n"
-            f"📝 დანიშნულებაში მიუთითეთ: `{order_number}`\n\n"
-            f"🧾 **გთხოვთ გადმორიცხვის შემდეგ აქ პირდაპირ გამომიგზავნოთ ქვითრის ფოტო ან სქრინშოტი!**\n"
+            f"🔢 ანგარიში (IBAN): `{st_settings.bank_iban}`\n"
+            f"👤 მიმღები: {st_settings.bank_recipient or 'Geosteam'}\n\n"
+            f"📸 **გთხოვთ გადმოგვიგზავნოთ გადახდის ქვითარი (სქრინშოტი/ფოტო) აქ პირად ჩატში!**"
         )
+    else:
+        payment_info = "💵 გადახდა განხორციელდება ნაღდი ანგარიშსწორებით შეკვეთის მიღებისას."
 
     confirm_text = (
-        f"🎉 **მადლობა, თქვენი შეკვეთა მიღებულია!**\n\n"
-        f"🔖 შეკვეთის ნომერი: `{order_number}`\n"
-        f"📦 პროდუქტი: {cart.get('name')} x{qty}\n"
+        f"🎉 **მადლობა! თქვენი შეკვეთა მიღებულია!**\n\n"
+        f"📦 შეკვეთის ნომერი: **#{new_order.order_number}**\n"
         f"💰 ჯამური თანხა: **{total:.2f} GEL**\n"
         f"📞 საკონტაქტო: {new_order.customer_phone}\n"
         f"🚚 მიწოდება: {new_order.delivery_method}\n"
@@ -479,11 +482,8 @@ async def finalize_order(message_target, customer: Customer, cart: dict, st_sett
         f"ჩვენი მენეჯერი მალე დაგიკავშირდებათ დეტალების დასაზუსტებლად! ❤️"
     )
 
-    is_admin = is_user_admin(customer.telegram_id, st_settings)
-    webapp_url = settings.WEBAPP_URL
     await message_target.reply_text(
         confirm_text,
-        reply_markup=get_main_keyboard(is_admin, webapp_url),
         parse_mode="Markdown"
     )
 
@@ -532,9 +532,7 @@ async def handle_text_or_multimedia(update: Update, context: ContextTypes.DEFAUL
         elif text == "🇬🇪 ჩვენს შესახებ" or "ჩვენს შესახებ" in text.lower() or "ვინ ხართ" in text.lower():
             customer.bot_paused = False
             await session.commit()
-            is_admin = is_user_admin(user.id, st_settings)
-            webapp_url = settings.WEBAPP_URL
-            await message.reply_text(GEOSTEAM_ABOUT_US_TEXT, reply_markup=get_main_keyboard(is_admin, webapp_url), parse_mode="Markdown")
+            await message.reply_text(GEOSTEAM_ABOUT_US_TEXT, parse_mode="Markdown")
             return
         elif text == "🙋‍♂️ ოპერატორი":
             await handle_request_operator(update, context)
@@ -543,9 +541,7 @@ async def handle_text_or_multimedia(update: Update, context: ContextTypes.DEFAUL
             customer.order_state = "IDLE"
             customer.temp_cart = "{}"
             await session.commit()
-            is_admin = is_user_admin(user.id, st_settings)
-            webapp_url = settings.WEBAPP_URL
-            await message.reply_text("შეკვეთა გაუქმებულია.", reply_markup=get_main_keyboard(is_admin, webapp_url))
+            await message.reply_text("შეკვეთა გაუქმებულია.")
             return
 
         # Handle FSM state for ordering
@@ -819,9 +815,7 @@ async def handle_text_or_multimedia(update: Update, context: ContextTypes.DEFAUL
             if text.strip().lower() in ["/unpause", "/bot", "/start", "ბოტი", "დაბრუნება", "bot"]:
                 customer.bot_paused = False
                 await session.commit()
-                is_admin = is_user_admin(user.id, st_settings)
-                webapp_url = settings.WEBAPP_URL
-                await message.reply_text("🤖 **ბოტი კვლავ აქტიურია!** რით დაგეხმარო? 💨", reply_markup=get_main_keyboard(is_admin, webapp_url), parse_mode="Markdown")
+                await message.reply_text("🤖 **ბოტი კვლავ აქტიურია!** რით დაგეხმარო? 💨", parse_mode="Markdown")
                 return
             return
 
@@ -881,8 +875,5 @@ async def handle_text_or_multimedia(update: Update, context: ContextTypes.DEFAUL
             }
         })
 
-        # Send response to customer with persistent menu keyboard
-        is_admin = is_user_admin(user.id, st_settings)
-        webapp_url = settings.WEBAPP_URL
-        main_kb = get_main_keyboard(is_admin, webapp_url)
-        await message.reply_text(ai_reply, reply_markup=main_kb, parse_mode="Markdown")
+        # Send response to customer
+        await message.reply_text(ai_reply, parse_mode="Markdown")
