@@ -236,10 +236,7 @@ class GeminiService:
         Generates a contextual response using Gemini 3.8 Flash, with tool calling support.
         """
         if not self.client:
-            return (
-                "⚠️ ასისტენტი დროებით მიუწვდომელია (Gemini API Key არ არის კონფიგურირებული). "
-                "გთხოვთ შეიყვანოთ API გასაღები ადმინ-პანელში ან დაუკავშირდეთ ადმინისტრატორს."
-            )
+            return self._smart_rule_based_fallback(user_message)
 
         if customer_context:
             _current_customer_context.set(customer_context)
@@ -322,14 +319,44 @@ class GeminiService:
 
             if response and response.text:
                 return response.text.strip()
-            return "ბოდიში, პასუხის გენერირება ვერ მოხერხდა. სცადეთ თავიდან."
+            return self._smart_rule_based_fallback(user_message)
 
         except Exception as e:
             logger.error(f"Gemini API generation error: {e}", exc_info=True)
+            return self._smart_rule_based_fallback(user_message)
+
+    def _smart_rule_based_fallback(self, user_message: str) -> str:
+        """Intelligent fallback for customer chat when AI is initializing or temporarily offline."""
+        msg = (user_message or "").lower().strip()
+        if any(w in msg for w in ("გამარჯობა", "სალამი", "მოგესალმებით", "hello", "hi", "hey")):
             return (
-                "სამწუხაროდ, პასუხის დამუშავებისას დაფიქსირდა ტექნიკური შეფერხება. "
-                "თუ გსურთ, შეგიძლიათ პირდაპირ დაუკავშირდეთ ჩვენს მენეჯერს."
+                "გამარჯობა! 👋 კეთილი იყოს თქვენი მობრძანება **GeoSteam**-ში! 🇬🇪💨\n\n"
+                "ჩვენთან დაგხვდებათ პრემიუმ ხარისხის ვეიპ სითხეები და მოწყობილობები.\n"
+                "პროდუქციის სანახავად დააჭირეთ ქვემოთ ღილაკს **📦 კატალოგი** ან მომწერეთ რა გაინტერესებთ!"
             )
+        if any(w in msg for w in ("სითხ", "ყიდვა", "შეძენა", "ფას", "კატალოგ", "არომატ", "liquid", "juice", "elfliq", "chaser")):
+            return (
+                "💨 **ჩვენი პროდუქციის სანახავად და შესაკვეთად:**\n\n"
+                "გთხოვთ გამოიყენოთ ქვედა მენიუდან ღილაკი **📦 კატალოგი**.\n"
+                "იქ იხილავთ ყველა ხელმისაწვდომ არომატს, ნიკოტინის დონეს და ფასებს, საიდანაც პირდაპირ შეგიძლიათ შეკვეთის გაფორმება! 🛒"
+            )
+        if any(w in msg for w in ("მიწოდება", "მისამართ", "ლოკაცია", "სად ხართ", "თბილისი", "რეგიონ", "yandex", "ტარიფ")):
+            return (
+                "🚚 **მიწოდების პირობები:**\n\n"
+                "• **თბილისში:** მიწოდება ხორციელდება Yandex საკურიეროთი (მოგვწერეთ ზუსტი მისამართი და დაჯამდება თანხა).\n"
+                "• **რეგიონებში:** ცენტრალურ მუნიციპალიტეტებში 9₾, სოფლებში 12₾.\n"
+                "• **თვითგატანა:** შესაძლებელია ჩვენი ლოკაციიდან.\n\n"
+                "დეტალებისთვის დააჭირეთ ღილაკს **ℹ️ მაღაზია / ლოკაცია**."
+            )
+        if any(w in msg for w in ("ოპერატორ", "მენეჯერ", "ადამიან", "დახმარებ", "operator")):
+            return "👨‍💼 პირდაპირ მენეჯერთან დასაკავშირებლად დააჭირეთ ღილაკს: **🙋‍♂️ ოპერატორი**."
+        return (
+            "გამარჯობა! 🇬🇪💨 რით შემიძლია დაგეხმაროთ?\n\n"
+            "გთხოვთ გამოიყენოთ ქვედა მენიუს ღილაკები:\n"
+            "📦 **კატალოგი** - პროდუქციის ნახვა და შეკვეთა\n"
+            "ℹ️ **მაღაზია / ლოკაცია** - მისამართი და მიწოდების პირობები\n"
+            "🙋‍♂️ **ოპერატორი** - ცოცხალ მენეჯერთან დაკავშირება"
+        )
 
     async def generate_channel_post(self, raw_notes: str, image_url: Optional[str] = None) -> str:
         """
