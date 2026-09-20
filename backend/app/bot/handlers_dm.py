@@ -123,6 +123,7 @@ async def handle_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         customer = await get_or_create_customer(user, session)
         customer.order_state = "IDLE"
         customer.temp_cart = "{}"
+        customer.bot_paused = False
         await session.commit()
 
         res = await session.execute(select(StoreSettings).limit(1))
@@ -133,11 +134,10 @@ async def handle_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     kb = get_main_keyboard(is_admin=is_admin, webapp_url=webapp_url)
 
     welcome_text = (
-        f"გამარჯობა, {user.first_name}! 👋\n\n"
-        f"კეთილი იყოს თქვენი მობრძანება **{st_settings.pickup_address if False else 'ჩვენს ვეიპ მაღაზიაში'}**!\n\n"
-        f"🤖 მე ვარ თქვენი პერსონალური AI ასისტენტი. შემიძლია გაგაცნოთ ჩვენი უმაღლესი ხარისხის ვეიპის სითხეები (E-Liquids), "
-        f"დაგეხმაროთ თქვენთვის სასურველი არომატისა და ნიკოტინის დონის შერჩევაში, გაგაცნოთ VG/PG თანაფარდობა და გაგიფორმოთ შეკვეთა.\n\n"
-        f"შეგიძლიათ დამისვათ ნებისმიერი შეკითხვა, ან ისარგებლოთ ქვედა მენიუთი 👇"
+        f"გაუმარჯოს, {user.first_name}! 💨\n\n"
+        f"GeoSteam-ში ხარ! 🇬🇪💨\n"
+        f"ჩვენთან დაგხვდება უმაღლესი ხარისხის პრემიუმ ვეიპ სითხეები და მოწყობილობები.\n\n"
+        f"შეგიძლია მკითხო ნებისმიერი რამ არომატებზე, ნიკოტინის დონეზე, მიწოდებაზე ან პირდაპირ გამოიყენო ქვედა მენიუ 👇"
     )
     await update.message.reply_text(welcome_text, reply_markup=kb, parse_mode="Markdown")
 
@@ -493,8 +493,7 @@ async def handle_text_or_multimedia(update: Update, context: ContextTypes.DEFAUL
     if not message:
         return
 
-    user = update.effective_user
-    chat_id = update.effective_chat.id
+    text = message.text or ""
 
     async with async_session_maker() as session:
         customer = await get_or_create_customer(user, session)
@@ -515,17 +514,24 @@ async def handle_text_or_multimedia(update: Update, context: ContextTypes.DEFAUL
             return
 
         # Handle persistent menu button texts
-        text = message.text or ""
         if text == "📦 კატალოგი":
+            customer.bot_paused = False
+            await session.commit()
             await handle_show_catalog(update, context)
             return
         elif text == "🛒 შეკვეთის გაფორმება":
+            customer.bot_paused = False
+            await session.commit()
             await start_order_workflow(update, context)
             return
         elif text == "ℹ️ მაღაზია & ლოკაცია":
+            customer.bot_paused = False
+            await session.commit()
             await handle_store_info(update, context)
             return
         elif text == "🇬🇪 ჩვენს შესახებ" or "ჩვენს შესახებ" in text.lower() or "ვინ ხართ" in text.lower():
+            customer.bot_paused = False
+            await session.commit()
             is_admin = is_user_admin(user.id, st_settings)
             webapp_url = f"http://{settings.HOST if settings.HOST != '0.0.0.0' else 'localhost'}:{settings.PORT}/admin"
             await message.reply_text(GEOSTEAM_ABOUT_US_TEXT, reply_markup=get_main_keyboard(is_admin, webapp_url), parse_mode="Markdown")
@@ -810,6 +816,13 @@ async def handle_text_or_multimedia(update: Update, context: ContextTypes.DEFAUL
         # Check Human Handoff (if bot is paused for this customer)
         if customer.bot_paused:
             logger.info(f"Bot is paused for customer {user.id}. Message logged for admin operator.")
+            if text.strip().lower() in ["/unpause", "/bot", "/start", "ბოტი", "დაბრუნება", "bot"]:
+                customer.bot_paused = False
+                await session.commit()
+                is_admin = is_user_admin(user.id, st_settings)
+                webapp_url = f"http://{settings.HOST if settings.HOST != '0.0.0.0' else 'localhost'}:{settings.PORT}/admin"
+                await message.reply_text("🤖 **ბოტი კვლავ აქტიურია!** რით დაგეხმარო? 💨", reply_markup=get_main_keyboard(is_admin, webapp_url), parse_mode="Markdown")
+                return
             return
 
         # If bot is active: Generate response using Gemini 3.8 Flash!
