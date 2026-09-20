@@ -88,26 +88,40 @@ async def init_db():
         current_settings = res.scalars().first()
         if not current_settings:
             new_settings = StoreSettings(
-                system_prompt="შენ ხარ პროფესიონალი და მეგობრული AI გაყიდვების ასისტენტი Geosteam-ის ვეიპის სითხეების (E-Liquids) მაღაზიაში. მაღაზიის სახელია მხოლოდ Geosteam (ჯეოსტიმი). შენი მიზანია დაეხმარო მომხმარებელს სწორი არომატისა და ნიკოტინის დონის შერჩევაში, პასუხი გასცე კითხვებს და დაეხმარო შეკვეთის გაფორმებაში. იყავი საქმიანი, თავაზიანი და მსუბუქი იუმორით. თუ პროდუქტი არ არის მარაგში, შესთავაზე მსგავსი გემოები ან ოპერატორთან გადამისამართება.",
+                system_prompt="შენ ხარ GeoSteam-ის მეგობრული, უშუალო და ენერგიული კონსულტანტი ვეიპ სითხეების (E-Liquids) მაღაზიაში. შენი მიზანია დაეხმარო მომხმარებელს სწორი არომატისა და ნიკოტინის დონის შერჩევაში, პასუხი გასცე კითხვებს და დაეხმარო შეკვეთის გაფორმებაში.",
                 ai_tone="official_humorous",
                 delivery_courier_enabled=True,
                 delivery_pickup_enabled=True,
-                delivery_mail_enabled=False,
+                delivery_mail_enabled=True,
                 payment_cash_enabled=True,
                 payment_bank_enabled=True,
-                pickup_address=settings.STORE_LOCATION_ADDRESS,
-                pickup_lat=settings.STORE_LOCATION_LAT,
-                pickup_lng=settings.STORE_LOCATION_LNG,
-                bank_name=settings.STORE_BANK_NAME,
-                bank_iban=settings.STORE_IBAN,
-                bank_recipient="Geosteam",
+                pickup_address="https://maps.app.goo.gl/5Ehyo2jkQv91ChnG8",
+                pickup_lat=41.6938,
+                pickup_lng=44.8015,
+                bank_name="BOG",
+                bank_iban="GE58BG0000000100906441",
+                bank_recipient="ლ.ჩ",
                 gemini_model="gemini-2.5-flash",
-                admin_telegram_ids=settings.ADMIN_TELEGRAM_IDS,
-                admin_email=settings.ADMIN_EMAIL
+                admin_telegram_ids="7191755188",
+                admin_email="lchibarashvili@gmail.com",
+                smtp_host="smtp.gmail.com",
+                smtp_port=587,
+                smtp_user="lchibarashvili@gmail.com",
+                smtp_password="ppsx pujc bvgl ubyb",
+                delivery_tbilisi_yandex_enabled=True,
+                delivery_regions_center_fee=9.0,
+                delivery_regions_village_fee=12.0,
+                delivery_regions_duration_days=3
             )
             session.add(new_settings)
         else:
-            # Clean up any legacy LLC/შპს from existing settings
+            # If dummy or default values present, update with real store settings
+            if not current_settings.pickup_address or "რუსთაველი" in (current_settings.pickup_address or ""):
+                current_settings.pickup_address = "https://maps.app.goo.gl/5Ehyo2jkQv91ChnG8"
+            if not current_settings.bank_iban or "GE00TB0000000000000000" in (current_settings.bank_iban or ""):
+                current_settings.bank_iban = "GE58BG0000000100906441"
+                current_settings.bank_name = "BOG"
+                current_settings.bank_recipient = "ლ.ჩ"
             if "შპს" in (current_settings.bank_recipient or ""):
                 current_settings.bank_recipient = "Geosteam"
             if current_settings.system_prompt and "შპს" in current_settings.system_prompt:
@@ -116,6 +130,33 @@ async def init_db():
                 current_settings.gemini_model = "gemini-2.5-flash"
             session.add(current_settings)
             
+        # Check products count - seed all products if empty
+        prod_res = await session.execute(select(Product).limit(1))
+        has_prod = prod_res.scalars().first()
+        if not has_prod:
+            seed_file = Path(__file__).parent / "seed_products.json"
+            if seed_file.exists():
+                try:
+                    with open(seed_file, "r", encoding="utf-8") as f:
+                        seed_data = json.load(f)
+                    for item in seed_data:
+                        p = Product(
+                            name=item.get("name"),
+                            description=item.get("description"),
+                            price=float(item.get("price", 0.0)),
+                            volume_ml=item.get("volume_ml"),
+                            color_type=item.get("color_type"),
+                            stock_quantity=int(item.get("stock_quantity", 0)),
+                            is_active=bool(item.get("is_active", True)),
+                            photo_url=item.get("photo_url"),
+                            channel_post_url=item.get("channel_post_url"),
+                            vg_pg_ratio=item.get("vg_pg_ratio"),
+                            nicotine_mg=item.get("nicotine_mg")
+                        )
+                        session.add(p)
+                except Exception as e:
+                    logger.error(f"Error seeding products: {e}")
+
         # Check admin
         admin_res = await session.execute(select(AdminUser).limit(1))
         admin = admin_res.scalars().first()

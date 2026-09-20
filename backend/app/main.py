@@ -118,3 +118,32 @@ async def health_check():
         "env": settings.APP_ENV,
         "bot_active": bot_manager._is_running
     }
+
+@app.get("/api/debug-ai")
+async def debug_ai():
+    from backend.app.ai.gemini_client import gemini_service
+    client_status = bool(gemini_service.client)
+    api_key_len = len(settings.GEMINI_API_KEY) if settings.GEMINI_API_KEY else 0
+    model = gemini_service.model_name
+    test_result = None
+    error_msg = None
+    try:
+        if gemini_service.client:
+            resp = await gemini_service.client.aio.models.generate_content(
+                model=model,
+                contents="Hello, reply with 1 word: OK"
+            )
+            test_result = resp.text.strip() if resp and resp.text else ""
+        else:
+            error_msg = "Client is None (GEMINI_API_KEY not configured or empty)"
+    except Exception as e:
+        error_msg = f"{type(e).__name__}: {str(e)}"
+
+    return {
+        "client_initialized": client_status,
+        "api_key_present": api_key_len > 0,
+        "api_key_masked": f"{settings.GEMINI_API_KEY[:6]}...{settings.GEMINI_API_KEY[-4:]}" if api_key_len > 10 else "",
+        "model": model,
+        "test_result": test_result,
+        "error": error_msg
+    }

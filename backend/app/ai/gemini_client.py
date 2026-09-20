@@ -175,23 +175,25 @@ async def register_customer_order(
 class GeminiService:
     def __init__(self):
         self.api_key = settings.GEMINI_API_KEY
-        model = settings.GEMINI_MODEL or "gemini-2.5-flash"
-        if not (settings.USE_VERTEX_AI or settings.GCP_PROJECT_ID) and "3.8" in model:
-            model = "gemini-2.5-flash"
-        self.model_name = model
+        self.model_name = settings.GEMINI_MODEL or "gemini-2.5-flash"
         self._client: Optional[genai.Client] = None
 
     @property
     def client(self) -> Optional[genai.Client]:
         if not self._client:
             try:
-                if settings.USE_VERTEX_AI or settings.GCP_PROJECT_ID:
+                # 1. First prioritize GEMINI_API_KEY if available (standard Developer API for cloud & local)
+                api_key = (self.api_key or settings.GEMINI_API_KEY or os.environ.get("GEMINI_API_KEY", "")).strip().strip('"').strip("'")
+                if api_key:
+                    logger.info(f"Connecting to Gemini API via API Key ({api_key[:6]}...)...")
+                    self._client = genai.Client(api_key=api_key)
+                elif settings.USE_VERTEX_AI or settings.GCP_PROJECT_ID or os.environ.get("GCP_PROJECT_ID"):
                     if settings.GOOGLE_APPLICATION_CREDENTIALS:
                         cred_path = Path(settings.GOOGLE_APPLICATION_CREDENTIALS)
                         if cred_path.exists():
                             os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = str(cred_path.resolve())
 
-                    project = settings.GCP_PROJECT_ID or None
+                    project = settings.GCP_PROJECT_ID or os.environ.get("GCP_PROJECT_ID") or None
                     location = settings.GCP_LOCATION or "global"
                     logger.info(f"Connecting to Google Cloud Vertex AI (Project: {project}, Location: {location})...")
                     self._client = genai.Client(
@@ -199,18 +201,15 @@ class GeminiService:
                         project=project,
                         location=location
                     )
-                elif self.api_key:
-                    logger.info("Connecting to Gemini API via API Key...")
-                    self._client = genai.Client(api_key=self.api_key)
             except Exception as e:
                 logger.error(f"Error initializing Gemini Client: {e}")
                 self._client = None
         return self._client
 
     def update_api_key(self, new_key: str):
-        self.api_key = new_key
+        self.api_key = new_key.strip().strip('"').strip("'")
         try:
-            self._client = genai.Client(api_key=new_key)
+            self._client = genai.Client(api_key=self.api_key)
         except Exception as e:
             logger.error(f"Failed to reload Gemini client with new key: {e}")
 
@@ -236,7 +235,7 @@ class GeminiService:
         customer_context: Optional[Dict[str, Any]] = None
     ) -> str:
         """
-        Generates a contextual response using Gemini 3.8 Flash, with tool calling support.
+        Generates a contextual response using Gemini, with tool calling support and model cascade.
         """
         if not self.client:
             return self._smart_rule_based_fallback(user_message)
@@ -273,11 +272,29 @@ class GeminiService:
                 )
             )
 
-            response = await self.client.aio.models.generate_content(
-                model=self.model_name,
-                contents=contents,
-                config=config
-            )
+            # Model cascade
+            candidate_models = [self.model_name]
+            for fallback_m in ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]:
+                if fallback_m not in candidate_models:
+                    candidate_models.append(fallback_m)
+
+            response = None
+            last_err = None
+            for model_cand in candidate_models:
+                try:
+                    response = await self.client.aio.models.generate_content(
+                        model=model_cand,
+                        contents=contents,
+                        config=config
+                    )
+                    if response:
+                        break
+                except Exception as ex:
+                    last_err = ex
+                    logger.warning(f"Model {model_cand} call failed: {ex}. Trying next model...")
+
+            if not response:
+                raise last_err or Exception("All Gemini models failed")
 
             current_turn_contents = list(contents)
 
@@ -329,29 +346,43 @@ class GeminiService:
             return self._smart_rule_based_fallback(user_message)
 
     def _smart_rule_based_fallback(self, user_message: str) -> str:
-        """Friendly, natural fallback for customer chat."""
+        """Friendly, natural fallback for customer chat with accurate store info."""
         msg = (user_message or "").lower().strip()
         if any(w in msg for w in ("გამარჯობა", "სალამი", "მოგესალმებით", "hello", "hi", "hey", "ზდაროვა", "გაუმარჯოს")):
             return (
                 "გაუმარჯოს! 💨 GeoSteam-ში ვართ.\n\n"
-                "რა გაინტერესებს — სითხეები, არომატები თუ მიწოდება? მითხარი და დაგეხმარები, ან აირჩიე მენიუდან 👇"
+                "რა გაინტერესებს — სითხეები, არომატები, ლოკაცია თუ მიწოდება? მითხარი და დაგეხმარები!"
+            )
+        if any(w in msg for w in ("ლოკაცია", "მისამართ", "google", "map", "ლინკ", "ბმულ", "სად ხართ", "მოსვლა", "სად მოვიდე", "მისვლა", "ადგილზე")):
+            return (
+                "📍 **ჩვენი ლოკაცია / Google Maps ბმული:**\n"
+                "https://maps.app.goo.gl/5Ehyo2jkQv91ChnG8\n\n"
+                "თვითგატანა მაღაზიიდან სრულიად უფასოა! 💨"
+            )
+        if any(w in msg for w in ("ანგარიშ", "იბან", "iban", "რეკვიზიტ", "გადარიცხვ", "ჩარიცხვ")):
+            return (
+                "💳 **საბანკო რეკვიზიტები გადასარიცხად:**\n"
+                "• ბანკი: BOG (საქართველოს ბანკი)\n"
+                "• IBAN: `GE58BG0000000100906441`\n"
+                "• მიმღები: ლ.ჩ\n\n"
+                "გადარიცხვის შემდეგ გამოგვიგზავნეთ ქვითრის სქრინშოტი აქ! 🧾"
             )
         if any(w in msg for w in ("სითხ", "ყიდვა", "შეძენა", "ფას", "კატალოგ", "არომატ", "liquid", "juice", "elfliq", "chaser")):
             return (
-                "💨 ყველა ხელმისაწვდომი სითხე და ფასები შეგიძლია ნახო ღილაკით **📦 კატალოგი** 👇\n"
-                "თუ კონკრეტული არომატი (ცივი, ხილის, ტკბილი) გინდა, მომწერე და გირჩევ!"
+                "💨 გვაქვს პრემიუმ ვეიპ სითხეების ფართო არჩევანი (50/50 და 70/30)!\n"
+                "მოგვწერე რა არომატი (ცივი, ხილის, ტკბილი) ან ნიკოტინის დონე გინდა და მაშინვე შეგირჩევთ."
             )
-        if any(w in msg for w in ("მიწოდება", "მისამართ", "ლოკაცია", "სად ხართ", "თბილისი", "რეგიონ", "yandex", "ტარიფ")):
+        if any(w in msg for w in ("მიწოდება", "კურიერ", "yandex", "ტარიფ", "რეგიონ")):
             return (
-                "🚚 **მიწოდება მარტივია:**\n"
+                "🚚 **მიწოდების პირობები:**\n"
                 "• **თბილისში:** Yandex კურიერით (მოგვწერე მისამართი და გამოგიგზავნით).\n"
-                "• **რეგიონებში:** ცენტრებში 9₾, სოფლებში 12₾ (3 დღეში ჩადის).\n"
-                "• **თვითგატანაც** უფასოა ჩვენგან."
+                "• **რეგიონებში:** ცენტრებში 9₾, სოფლებში 12₾ (3 სამუშაო დღეში).\n"
+                "• **თვითგატანა:** უფასოა ჩვენი ლოკაციიდან: https://maps.app.goo.gl/5Ehyo2jkQv91ChnG8"
             )
         if any(w in msg for w in ("ოპერატორ", "მენეჯერ", "ადამიან", "დახმარებ", "operator")):
-            return "👨‍💼 ოპერატორთან გადასასვლელად დააჭირე ღილაკს: **🙋‍♂️ ოპერატორი**."
+            return "👨‍💼 ოპერატორი მალე შემოგიერთდებათ პირადში დასახმარებლად!"
         return (
-            "გისმენ! 💨 რით დაგეხმარო? შეგიძლია პირდაპირ მკითხო სითხეებზე ან გამოიყენო ქვედა მენიუ 👇"
+            "გისმენ! 💨 რით დაგეხმარო? შეგიძლია მკითხო სითხეებზე, არომატებზე, ლოკაციაზე ან მიწოდებაზე."
         )
 
     async def generate_channel_post(self, raw_notes: str, image_url: Optional[str] = None) -> str:

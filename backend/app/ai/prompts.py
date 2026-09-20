@@ -36,17 +36,20 @@ def build_system_prompt(settings: StoreSettings, products: List[Product]) -> str
     center_fee = getattr(settings, 'delivery_regions_center_fee', 9.0) or 9.0
     village_fee = getattr(settings, 'delivery_regions_village_fee', 12.0) or 12.0
     duration_days = getattr(settings, 'delivery_regions_duration_days', 3) or 3
+    pickup_loc = settings.pickup_address or "https://maps.app.goo.gl/5Ehyo2jkQv91ChnG8"
 
     logistics_text = f"""
 ### 🚚 მიწოდებისა და გადახდის წესები:
-- მაღაზიის სახელი: Geosteam (ჯეოსტიმი)
+- მაღაზიის სახელი: GeoSteam (ჯეოსტიმი)
 - **მიწოდების ოფიციალური პირობები:**
   1. 🛵 **თბილისის ფარგლებში:** მიწოდება ხორციელდება **Yandex საკურიეროთი**. მომხმარებელმა უნდა მოგვწეროს თავისი ზუსტი მისამართი, სადაც სურს გამოგზავნა და სრული თანხა დაჯამდება მიწოდებიანად.
   2. 🏙️ **რეგიონებში (მუნიციპალურ ცენტრებში / ქალაქებში):** მიწოდების საფასურია **{center_fee:.0f}₾**. მიწოდების ხანგრძლივობა: გაგზავნიდან **{duration_days} სამუშაო დღე**.
   3. 🏡 **რეგიონებში (სოფლებში / დასახლებებში):** მიწოდების საფასურია **{village_fee:.0f}₾**. მიწოდების ხანგრძლივობა: გაგზავნიდან **{duration_days} სამუშაო დღე**.
-  4. 🏬 **თვითგატანა მაღაზიიდან:** უფასო (მისამართი: {settings.pickup_address or 'წერეთლის გამზ. 116'}).
+  4. 🏬 **თვითგატანა მაღაზიიდან:** უფასო!
+     - 📍 **ჩვენი ლოკაცია / Google Maps ბმული:** {pickup_loc}
+     - (როდესაც მომხმარებელი გეკითხება ლოკაციას, მისამართს, Google Maps ლინკს, რუკას ან ადგილზე მოსვლას, ყოველთვის გაუგზავნე ეს ზუსტი Google Maps ბმული: {pickup_loc})
 - **გადახდის მეთოდები:** საბანკო გადარიცხვა ({settings.bank_name}) ან ნაღდი ანგარიშსწორება ადგილზე.
-- **საბანკო რეკვიზიტები:** ბანკი: {settings.bank_name} | IBAN: {settings.bank_iban} | მიმღები: {settings.bank_recipient or 'Geosteam'}
+- **საბანკო რეკვიზიტები:** ბანკი: {settings.bank_name} | IBAN: {settings.bank_iban} | მიმღები: {settings.bank_recipient or 'ლ.ჩ'}
 """
 
     # 4. Brand Story / About Us
