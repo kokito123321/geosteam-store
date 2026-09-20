@@ -154,3 +154,50 @@ async def debug_ai():
         "working_model": working_model,
         "models_tested": model_results
     }
+
+@app.get("/api/debug-smtp")
+async def debug_smtp():
+    from backend.app.database import async_session_maker
+    from backend.app.models import StoreSettings
+    from sqlalchemy import select
+    import aiosmtplib
+    from email.message import EmailMessage
+
+    async with async_session_maker() as session:
+        res = await session.execute(select(StoreSettings).limit(1))
+        st = res.scalars().first()
+
+    host = (st.smtp_host if st else "") or settings.SMTP_HOST or "smtp.gmail.com"
+    user = (st.smtp_user if st else "") or settings.SMTP_USER
+    password = (st.smtp_password if st else "") or settings.SMTP_PASSWORD
+    to_email = (st.admin_email if st else "") or settings.ADMIN_EMAIL
+
+    results = {}
+    for port, is_ssl, is_tls in [(465, True, False), (587, False, True)]:
+        msg = EmailMessage()
+        msg["From"] = user or "noreply@geosteam.ge"
+        msg["To"] = to_email or user
+        msg["Subject"] = f"SMTP Diagnostic Test (Port {port})"
+        msg.set_content("Diagnostic test from Render cloud")
+        try:
+            await aiosmtplib.send(
+                msg,
+                hostname=host,
+                port=port,
+                username=user if user else None,
+                password=password if password else None,
+                start_tls=is_tls,
+                use_tls=is_ssl,
+                timeout=10
+            )
+            results[f"port_{port}"] = "SUCCESS"
+        except Exception as ex:
+            results[f"port_{port}"] = f"FAILED: {str(ex)}"
+
+    return {
+        "host": host,
+        "user": user,
+        "to_email": to_email,
+        "password_set": bool(password),
+        "results": results
+    }
