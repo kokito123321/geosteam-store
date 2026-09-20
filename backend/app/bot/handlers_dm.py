@@ -93,25 +93,28 @@ async def handle_admin_command(update: Update, context: ContextTypes.DEFAULT_TYP
         await update.message.reply_text("⛔ თქვენ არ გაქვთ ადმინისტრატორის უფლებები.")
         return
 
+    admin_url = settings.WEBAPP_URL or "https://geosteam-store.onrender.com/admin"
     lan_ip = get_lan_ip()
     port = settings.PORT or 8000
-    mobile_url = f"http://{lan_ip}:{port}/admin"
 
     msg = (
         f"👑 **Geosteam მართვის პანელი (Admin Panel)**\n\n"
-        f"📱 **მობილური წვდომა (Wi-Fi ქსელში):**\n"
-        f"👉 `{mobile_url}`\n\n"
-        f"💻 **ლოკალური ბმული (PC):**\n"
-        f"👉 `http://localhost:{port}/admin`\n\n"
+        f"🌐 **პირდაპირი ბმული (Live Cloud):**\n"
+        f"👉 `{admin_url}`\n\n"
         f"🔐 **შესასვლელი მონაცემები:**\n"
         f"• მომხმარებელი: `admin`\n"
         f"• პაროლი: `admin123`\n\n"
-        f"💡 ტელეფონით გასახსნელად, დარწმუნდით რომ თქვენი ტელეფონი ჩართულია იმავე Wi-Fi-ზე და გახსენით ბმული ბრაუზერში."
+        f"💡 შეგიძლიათ გახსნათ როგორც პირდაპირ Telegram-ის Mini App-ში (ღილაკით), ასევე ნებისმიერ ბრაუზერში."
     )
-    from telegram import InlineKeyboardMarkup, InlineKeyboardButton
-    kb = InlineKeyboardMarkup([
-        [InlineKeyboardButton("🌐 Admin Panel-ის გახსნა (LAN)", url=f"http://{lan_ip}:{port}/admin")]
-    ])
+    from telegram import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
+    buttons = []
+    if admin_url.startswith("https://"):
+        buttons.append([InlineKeyboardButton("📱 Mini App-ის გახსნა (Telegram-შივე)", web_app=WebAppInfo(url=admin_url))])
+        buttons.append([InlineKeyboardButton("🌐 ბრაუზერში გახსნა", url=admin_url)])
+    else:
+        buttons.append([InlineKeyboardButton("🌐 Admin Panel-ის გახსნა (LAN)", url=f"http://{lan_ip}:{port}/admin")])
+
+    kb = InlineKeyboardMarkup(buttons)
     await update.message.reply_text(msg, reply_markup=kb, parse_mode="Markdown")
 
 async def handle_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -513,6 +516,12 @@ async def handle_text_or_multimedia(update: Update, context: ContextTypes.DEFAUL
                 "გასარკვევად დაუკავშირდით ოპერატორს ღილაკით: 🙋‍♂️ ოპერატორი.",
                 parse_mode="Markdown"
             )
+            return
+
+        # Check for admin keywords from authorized admins
+        clean_t = text.lower().strip()
+        if clean_t in ("admin", "/admin", "ადმინ", "ადმინი", "ადმინ პანელი", "მართვის პანელი") and is_user_admin(user.id, st_settings):
+            await handle_admin_command(update, context)
             return
 
         # Handle persistent menu button texts

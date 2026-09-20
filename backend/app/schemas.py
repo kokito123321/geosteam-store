@@ -114,6 +114,7 @@ class GenerateChannelPostRequest(BaseModel):
     notes: Optional[str] = None
     raw_notes: Optional[str] = None
     image_url: Optional[str] = None
+    photo_url: Optional[str] = None
 
 class PublishChannelPostRequest(BaseModel):
     text: str

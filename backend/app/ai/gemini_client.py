@@ -218,14 +218,6 @@ class GeminiService:
             self.model_name = new_model.strip()
             logger.info(f"Gemini service switched to model: {self.model_name}")
 
-    async def generate_channel_post(self, notes: str) -> str:
-        from backend.app.ai.prompts import CHANNEL_POST_GENERATOR_SYSTEM_PROMPT
-        return await self.get_response(
-            user_message=f"გთხოვთ შექმნათ კარგი ტელეგრამ პოსტი შემდეგი მონაცემების მიხედვით:\n{notes}",
-            system_instruction=CHANNEL_POST_GENERATOR_SYSTEM_PROMPT,
-            temperature=0.7
-        )
-
     async def get_response(
         self,
         user_message: str,
@@ -388,46 +380,69 @@ class GeminiService:
 
     async def generate_channel_post(self, raw_notes: str, image_url: Optional[str] = None) -> str:
         """
-        Generates a viral, high-converting Telegram post for the @Geosteamforeveryone channel.
+        Generates a creative, viral, high-converting Telegram post for @Geosteamforeveryone.
         """
         if not self.client:
             return raw_notes
 
         system_prompt = (
-            "შენ ხარ Geosteam / ჯეოსტიმის პროფესიონალი Telegram SMM მარკეტერი.\n"
-            "შენი მიზანია შექმნა უმაღლესი დონის, მიმზიდველი და გაყიდვებზე ორიენტირებული პოსტი ტელეგრამ არხისთვის (@Geosteamforeveryone).\n\n"
-            "პოსტის სტრუქტურის წესები:\n"
-            "1. ეფექტური, თვალშისაცემი სათაური ემოჯებით (მაგ: 🔥 ახალი არომატი ჩამოვიდა! / 💨 შეხვდით ახალ ჩამოსვლას!)\n"
-            "2. პროდუქტის მადისაღმძვრელი და დეტალური აღწერა\n"
-            "3. მკაფიო სპეციფიკაციები Bullet point-ებით (💧 მოცულობა, 🧪 ნიკოტინი, 💨 VG/PG, 💰 ფასი)\n"
-            "4. მკაფიო მოწოდება მოქმედებისკენ (CTA) — 'შესაკვეთად მოგვწერეთ პირადში ან გამოიყენეთ ბოტი!'\n"
-            "5. გამოიყენე ჰეშთეგები: #Geosteam #VapeGeorgia #VapeTbilisi #PremiumJuice\n"
-            "მნიშვნელოვანია: პოსტი უნდა იყოს მხოლოდ ქართულ ენაზე, გამართული, ცოცხალი და თანამედროვე სტილით."
+            "შენ ხარ Geosteam-ის (ჯეოსტიმი / ქართული ორთქლი 🇬🇪💨) წამყვანი SMM და Copywriting ექსპერტი.\n"
+            "შენი მისიაა ადმინისტრატორის მიერ მოწოდებული მოკლე, მშრალი ჩანაწერებიდან შექმნა მაქსიმალურად კრეატიული, "
+            "თვალშისაცემი, მადისაღმძვრელი და გაყიდვებზე ორიენტირებული Telegram პოსტი არხისთვის (@Geosteamforeveryone).\n\n"
+            "🔥 პოსტის აუცილებელი სტრუქტურა:\n"
+            "1. **თვალშისაცემი ჰედლაინი (Catchy Hook):** გამოიყენე ცეცხლოვანი და თემატური ემოჯები (მაგ: 🔥💨 ექსკლუზივი ჯეოსტიმში! / 💣 ტროპიკული აფეთქება ჩამოვიდა!).\n"
+            "2. **მადისაღმძვრელი Storytelling / გემოს აღწერა:** დეტალურად და ცოცხლად აღწერე არომატის ნოტები (ტკბილი, ცივი, მჟავე, ხილის წვნიანი ტონები), რათა მკითხველს პირველივე წაკითხვისას მოუნდეს გასინჯვა.\n"
+            "3. **მკაფიო მახასიათებლები (Bullets & Emojis):**\n"
+            "   • 💧 **მოცულობა:** [30ml / 60ml და ა.შ.]\n"
+            "   • ⚡ **ნიკოტინი:** [20mg Salt / 3mg / 6mg და ა.შ.]\n"
+            "   • ⚖️ **VG/PG ბალანსი:** [50/50 Pod მოწყობილობებისთვის ან 70/30]\n"
+            "   • 💰 **ფასი:** [მითითებული ფასი] ₾\n"
+            "4. **მოწოდება მოქმედებისკენ (Call To Action):**\n"
+            "   • 🛒 **შესაკვეთად მოგვწერეთ პირადში ან გამოიყენეთ ჩვენი ბოტი:** @GeoSteamSupportBot\n"
+            "   • 🛵 **სწრაფი მიტანა თბილისში Yandex კურიერით | რეგიონებში 3 დღეში | თვითგატანა მაღაზიიდან**\n"
+            "5. **ჰეშთეგები:** #Geosteam #ქართულიორთქლი #VapeGeorgia #VapeTbilisi #ELiquid #PremiumVape\n\n"
+            "⚠️ წესები:\n"
+            "- პოსტი დაწერე მხოლოდ ქართულად, უმაღლესი ხარისხის მარკეტინგული ქართულით.\n"
+            "- არასდროს გამოიყენო 'შპს' ან ოფიციალური ბიუროკრატიული ტონი.\n"
+            "- ტექსტი იყოს ცოცხალი, ენერგიული და სრულად დასრულებული."
         )
 
-        try:
-            config = types.GenerateContentConfig(
-                system_instruction=system_prompt,
-                temperature=0.7,
-                max_output_tokens=1000
-            )
+        candidate_models = [
+            self.model_name,
+            "gemini-3.6-flash",
+            "gemini-3.8-flash"
+        ]
+        # Deduplicate while preserving order
+        unique_models = []
+        for m in candidate_models:
+            if m and m not in unique_models:
+                unique_models.append(m)
 
-            prompt = f"გთხოვთ ამ მონაცემებზე დაყრდნობით შექმნა მზა Telegram პოსტი:\n\n{raw_notes}"
-            if image_url:
-                prompt += f"\n(თანდართულია ფოტო: {image_url})"
+        for model_cand in unique_models:
+            try:
+                config = types.GenerateContentConfig(
+                    system_instruction=system_prompt,
+                    temperature=0.85,
+                    max_output_tokens=4096
+                )
 
-            resp = await self.client.aio.models.generate_content(
-                model=self.model_name,
-                contents=prompt,
-                config=config
-            )
+                prompt = f"გთხოვთ ამ მოკლე ჩანაწერებზე დაყრდნობით შექმნა სრული, კრეატიული და გაყიდვადი Telegram პოსტი:\n\n{raw_notes}"
+                if image_url:
+                    prompt += f"\n(თანდართულია პროდუქტის ფოტო: {image_url})"
 
-            if resp and resp.text:
-                return resp.text.strip()
-            return raw_notes
-        except Exception as err:
-            logger.error(f"Error generating channel post with Gemini: {err}", exc_info=True)
-            return raw_notes
+                resp = await self.client.aio.models.generate_content(
+                    model=model_cand,
+                    contents=prompt,
+                    config=config
+                )
+
+                if resp and resp.text and len(resp.text.strip()) > 30:
+                    self.model_name = model_cand
+                    return resp.text.strip()
+            except Exception as err:
+                logger.warning(f"Error generating channel post with model {model_cand}: {err}")
+
+        return raw_notes
 
     async def verify_receipt_image(
         self,

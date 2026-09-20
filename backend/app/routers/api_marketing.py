@@ -226,7 +226,8 @@ async def generate_channel_post(
     if not notes_text:
         raise HTTPException(status_code=400, detail="გთხოვთ მიუთითოთ პროდუქტის მოკლე აღწერა ან ჩანაწერები.")
         
-    generated = await gemini_service.generate_channel_post(notes_text, req.image_url)
+    img_url = req.photo_url or req.image_url
+    generated = await gemini_service.generate_channel_post(notes_text, img_url)
     return {
         "status": "success",
         "generated_text": generated,
