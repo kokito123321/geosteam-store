@@ -1,0 +1,965 @@
+<!DOCTYPE html>
+<html lang="ka">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>მართვის პანელი | {{ app_name }}</title>
+    <link href="https://fonts.googleapis.com/css2?family=FiraGO:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/style.css">
+    <!-- Telegram Mini App JS SDK -->
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+</head>
+<body>
+    <div class="toast-container" id="toastContainer"></div>
+
+    <div class="app-container">
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <span class="sidebar-logo">💨</span>
+                <h1>Geosteam Admin</h1>
+            </div>
+
+            <nav class="sidebar-nav">
+                <a class="nav-item active" data-tab="dashboard">
+                    <span>📊</span> მიმოხილვა
+                </a>
+                <a class="nav-item" data-tab="products">
+                    <span>📦</span> პროდუქცია
+                </a>
+                <a class="nav-item" data-tab="orders">
+                    <span>🛒</span> შეკვეთები
+                    <span class="nav-badge" id="newOrdersBadge" style="display: none;">0</span>
+                </a>
+                <a class="nav-item" data-tab="livechat">
+                    <span>💬</span> Live Chat
+                    <span class="nav-badge" id="handoffBadge" style="display: none;">!</span>
+                </a>
+                <a class="nav-item" data-tab="channel-posts">
+                    <span>📢</span> ჩანელის პოსტები (AI & Scheduler)
+                </a>
+                <a class="nav-item" data-tab="ai-settings">
+                    <span>🧠</span> AI & Gemini
+                </a>
+                <a class="nav-item" data-tab="marketing">
+                    <span>📣</span> მარკეტინგი & Broadcast
+                </a>
+                <a class="nav-item" data-tab="blacklist">
+                    <span>🚫</span> შავი სია (Black List)
+                    <span class="nav-badge" id="blacklistBadge" style="display: none; background: #ef4444;">0</span>
+                </a>
+                <a class="nav-item" data-tab="settings">
+                    <span>⚙️</span> პარამეტრები
+                </a>
+            </nav>
+
+            <div class="sidebar-footer">
+                <div class="user-info">
+                    <span class="user-name" id="currentUsername">Admin</span>
+                    <span class="user-role" id="currentUserRole">Superadmin</span>
+                </div>
+                <button class="btn btn-secondary btn-sm" id="logoutBtn" title="გასვლა">🚪</button>
+            </div>
+        </aside>
+
+        <!-- Main Content View -->
+        <main class="main-wrapper">
+            <header class="topbar">
+                <div class="page-title" id="pageTitle">მიმოხილვა</div>
+                <div class="topbar-actions">
+                    <button class="btn btn-secondary btn-sm" onclick="openMobileAccessModal()" title="ტელეფონში გახსნა">📱 მობილური / Mini App</button>
+                    <button class="btn btn-primary btn-sm" id="quickNewProductBtn">+ ახალი სითხე</button>
+                    <span class="badge badge-success" id="botStatusBadge">● ბოტი აქტიურია</span>
+                </div>
+            </header>
+
+            <div class="content-body">
+                <!-- 1. DASHBOARD TAB -->
+                <section id="tab-dashboard" class="tab-pane active">
+                    <div class="metrics-grid">
+                        <div class="metric-card">
+                            <div class="metric-icon">💰</div>
+                            <div class="metric-data">
+                                <div class="metric-header-row">
+                                    <h3>ჯამური შემოსავალი</h3>
+                                    <button class="btn-icon-reset" onclick="confirmResetMetric('revenue')" title="შემოსავლის განულება">↺ განულება</button>
+                                </div>
+                                <p id="metricTotalRevenue">0.00 GEL</p>
+                            </div>
+                        </div>
+                        <div class="metric-card">
+                            <div class="metric-icon">🛒</div>
+                            <div class="metric-data">
+                                <div class="metric-header-row">
+                                    <h3>სულ შეკვეთები</h3>
+                                    <button class="btn-icon-reset" onclick="confirmResetMetric('orders')" title="შეკვეთების განულება">↺ განულება</button>
+                                </div>
+                                <p id="metricTotalOrders">0</p>
+                            </div>
+                        </div>
+                        <div class="metric-card">
+                            <div class="metric-icon">💨</div>
+                            <div class="metric-data">
+                                <div class="metric-header-row">
+                                    <h3>აქტიური სითხეები</h3>
+                                    <button class="btn-icon-reset" onclick="confirmResetMetric('products')" title="მარაგების განულება">↺ განულება</button>
+                                </div>
+                                <p id="metricActiveProducts">0</p>
+                            </div>
+                        </div>
+                        <div class="metric-card">
+                            <div class="metric-icon">👥</div>
+                            <div class="metric-data">
+                                <div class="metric-header-row">
+                                    <h3>მომხმარებელთა ჩატები</h3>
+                                    <button class="btn-icon-reset" onclick="confirmResetMetric('chats')" title="ჩატების ისტორიის განულება">↺ განულება</button>
+                                </div>
+                                <p id="metricTotalChats">0</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="panel-card">
+                        <div class="panel-header">
+                            <div class="panel-title">ბოლო შეკვეთები</div>
+                            <button class="btn btn-secondary btn-sm" onclick="switchTab('orders')">ყველას ნახვა →</button>
+                        </div>
+                        <div class="table-responsive">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>შეკვეთის #</th>
+                                        <th>კლიენტი</th>
+                                        <th>ტელეფონი</th>
+                                        <th>თანხა</th>
+                                        <th>მიწოდება</th>
+                                        <th>გადახდა</th>
+                                        <th>სტატუსი</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="dashboardRecentOrders">
+                                    <tr><td colspan="7" style="text-align:center;">იტვირთება...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- 2. PRODUCTS TAB -->
+                <section id="tab-products" class="tab-pane" style="display: none;">
+                    <div class="panel-card">
+                        <div class="panel-header">
+                            <div class="panel-title">ვეიპის სითხეების კატალოგი (E-Liquids)</div>
+                            <div style="display: flex; gap: 0.5rem; align-items: center;">
+                                <button class="btn btn-danger btn-sm" id="bulkDeleteBtn" style="display: none;" onclick="bulkDeleteSelectedProducts()">
+                                    🗑️ მონიშნულების წაშლა (<span id="selectedCount">0</span>)
+                                </button>
+                                <button class="btn btn-primary" onclick="openProductModal()">+ ახალი სითხის დამატება</button>
+                            </div>
+                        </div>
+                        <div class="table-responsive">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th style="width: 40px; text-align: center;">
+                                            <input type="checkbox" id="selectAllProducts" onchange="toggleSelectAllProducts(this)" title="ყველას მონიშვნა">
+                                        </th>
+                                        <th>ID</th>
+                                        <th>დასახელება</th>
+                                        <th>ფასი (GEL)</th>
+                                        <th>მოცულობა</th>
+                                        <th>VG/PG</th>
+                                        <th>ნიკოტინი</th>
+                                        <th>მარაგი</th>
+                                        <th>სტატუსი</th>
+                                        <th>ჩანელის ლინკი</th>
+                                        <th>მოქმედება</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="productsTableBody">
+                                    <!-- Dynamic product rows -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- 3. ORDERS TAB -->
+                <section id="tab-orders" class="tab-pane" style="display: none;">
+                    <div class="panel-card">
+                        <div class="panel-header">
+                            <div class="panel-title">შეკვეთების მართვა</div>
+                            <div style="display: flex; gap: 0.5rem;">
+                                <select id="orderStatusFilter" class="btn btn-secondary" onchange="loadOrders()">
+                                    <option value="">ყველა სტატუსი</option>
+                                    <option value="new">ახალი</option>
+                                    <option value="processing">მზადდება</option>
+                                    <option value="delivered">ჩაბარებული</option>
+                                    <option value="cancelled">გაუქმებული</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="table-responsive">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th># ნომერი</th>
+                                        <th>კლიენტი & ტელეფონი</th>
+                                        <th>შეკვეთილი პროდუქტები</th>
+                                        <th>თანხა</th>
+                                        <th>მიწოდება & მისამართი</th>
+                                        <th>გადახდა & ქვითარი</th>
+                                        <th>სტატუსის შეცვლა</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="ordersTableBody">
+                                    <!-- Dynamic orders rows -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- 4. LIVE CHAT TAB (Human Handoff) -->
+                <section id="tab-livechat" class="tab-pane" style="display: none;">
+                    <div class="chat-container">
+                        <div class="chat-threads-col">
+                            <div class="threads-header">💬 მომხმარებელთა ჩატები</div>
+                            <div class="threads-list" id="chatThreadsList">
+                                <!-- Dynamic threads list -->
+                            </div>
+                        </div>
+                        <div class="chat-window-col">
+                            <div class="chat-topbar" id="chatWindowHeader">
+                                <span style="font-weight: 600;">აირჩიეთ ჩატი მარცხნიდან</span>
+                            </div>
+                            <div class="chat-messages" id="chatMessagesBox">
+                                <div style="text-align: center; color: var(--text-muted); margin-top: 50px;">
+                                    აირჩიეთ მომხმარებელი სასაუბროდ ან მონიტორინგისთვის
+                                </div>
+                            </div>
+                            <div class="chat-bottombar" id="chatInputBar" style="display: none;">
+                                <input type="text" id="adminMessageInput" class="chat-input" placeholder="მიწერეთ მომხმარებელს ტელეგრამში...">
+                                <button class="btn btn-primary" onclick="sendAdminReply()">გაგზავნა</button>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- 4.1. CHANNEL POSTS AI CREATOR & SCHEDULER TAB -->
+                <section id="tab-channel-posts" class="tab-pane" style="display: none;">
+                    <div style="display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 1.5rem;">
+                        <!-- Creator & Scheduler Form -->
+                        <div class="panel-card">
+                            <div class="panel-header">
+                                <div class="panel-title">✨ AI პოსტის შემქმნელი & დაგეგმვა (@Geosteamforeveryone)</div>
+                            </div>
+                            <form id="channelPostForm">
+                                <div class="form-group">
+                                    <label for="postRawNotes">პროდუქტის მოკლე მონაცემები (Raw Notes)</label>
+                                    <textarea id="postRawNotes" rows="4" placeholder="მაგ: ახალი სითხე ჩამოვიდა Elfliq Kiwi Passion Fruit Guava, 30ml, 50/50, 20mg, ფასი 25 ლარი."></textarea>
+                                    <small style="color: var(--text-muted)">დაწერეთ მარტივი ჩანაწერები - Gemini AI შექმნის სრულყოფილ, მიმზიდველ Telegram პოსტს ემოჯებითა და სპეციფიკაციებით.</small>
+                                </div>
+
+                                <div class="form-group">
+                                    <label for="postImageUrl">🖼️ პოსტის ფოტოს URL (სურვილისამებრ)</label>
+                                    <input type="url" id="postImageUrl" placeholder="https://example.com/vape_photo.jpg" oninput="previewPostImageUrl(this.value)">
+                                    <small style="color: var(--text-muted)">ჩასვით ფოტოს პირდაპირი ბმული (URL) ჩანელის პოსტზე დასართავად.</small>
+                                    <div id="postImagePreviewBox" style="margin-top: 0.5rem; display: none;">
+                                        <img id="postImagePreview" src="" alt="Preview" style="max-height: 140px; border-radius: 8px; border: 1px solid var(--border); object-fit: cover;">
+                                    </div>
+                                </div>
+
+                                <div style="margin-bottom: 1.25rem;">
+                                    <button type="button" class="btn btn-secondary" id="generatePostBtn" onclick="generateChannelPostWithAI()">
+                                        ✨ Gemini AI-ით გენერირება
+                                    </button>
+                                </div>
+
+                                <div class="form-group">
+                                    <label for="postGeneratedText">მზა პოსტის ტექსტი (შეგიძლიათ ჩაასწოროთ ხელით)</label>
+                                    <textarea id="postGeneratedText" rows="7" placeholder="AI-ს მიერ დაგენერირებული ტექსტი გამოჩნდება აქ..."></textarea>
+                                </div>
+
+                                <div style="background: var(--bg-card); padding: 1rem; border-radius: 8px; border: 1px solid var(--border); margin-bottom: 1rem;">
+                                    <h4 style="font-size: 0.9rem; margin-bottom: 0.5rem; color: var(--primary);">⏰ გამოქვეყნების განრიგი</h4>
+                                    <div style="display: flex; gap: 0.75rem; align-items: center;">
+                                        <input type="datetime-local" id="postScheduleTime" style="flex: 1;">
+                                        <button type="button" class="btn btn-secondary" onclick="scheduleChannelPost()">
+                                            ⏰ დაგეგმვა
+                                        </button>
+                                    </div>
+                                    <small style="color: var(--text-muted); display: block; margin-top: 4px;">მიუთითეთ დღე და საათი, როდესაც ბოტმა ავტომატურად უნდა გამოაქვეყნოს ჩანელში.</small>
+                                </div>
+
+                                <button type="button" class="btn btn-primary btn-block" onclick="publishChannelPostNow()">
+                                    🚀 ახლავე გამოქვეყნება ჩანელში
+                                </button>
+                            </form>
+                        </div>
+
+                        <!-- Posts History / Queue -->
+                        <div class="panel-card">
+                            <div class="panel-header">
+                                <div class="panel-title">📋 ჩანელის პოსტების განრიგი & ისტორია</div>
+                                <button class="btn btn-secondary btn-sm" onclick="loadChannelPosts(true)">🔄 განახლება</button>
+                            </div>
+                            <div class="table-responsive" style="max-height: 600px; overflow-y: auto;">
+                                <table>
+                                    <thead>
+                                        <tr>
+                                            <th>სტატუსი</th>
+                                            <th>ტექსტი & ფოტო</th>
+                                            <th>დრო</th>
+                                            <th>წაშლა</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="channelPostsTableBody">
+                                        <!-- Dynamic channel posts -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- 5. AI & GEMINI SETTINGS TAB -->
+                <section id="tab-ai-settings" class="tab-pane" style="display: none;">
+                    <div class="panel-card">
+                        <div class="panel-header">
+                            <div class="panel-title">🧠 Google Gemini AI კონფიგურაცია</div>
+                            <button class="btn btn-secondary btn-sm" onclick="testGeminiConnection()">🧪 კავშირის ტესტი</button>
+                        </div>
+                        <form id="aiSettingsForm">
+                            <div class="form-group">
+                                <label for="geminiModelSelect">Gemini-ს მოდელი (Model Selection)</label>
+                                <select id="geminiModelSelect" style="width: 100%; padding: 0.6rem; border-radius: 6px; background: var(--bg-card); color: var(--text); border: 1px solid var(--border);">
+                                    <option value="gemini-3.8-flash">Gemini 3.8 Flash (უახლესი, ყველაზე ჭკვიანი & რეკომენდებული)</option>
+                                    <option value="gemini-3.7-flash">Gemini 3.7 Flash (მაღალი სისწრაფე & ლოგიკა)</option>
+                                    <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
+                                    <option value="gemini-2.5-pro">Gemini 2.5 Pro</option>
+                                </select>
+                                <small style="color: var(--text-muted)">მოდელი ავტომატურად მუშაობს თქვენს Google Cloud $300 უფასო კრედიტებზე.</small>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="systemPrompt">სისტემური ინსტრუქცია (AI System Prompt)</label>
+                                <textarea id="systemPrompt" rows="6" placeholder="მიუთითეთ ბოტის ქცევის წესები..."></textarea>
+                                <small style="color: var(--text-muted)">ბოტი ავტომატურად იყენებს თქვენს აქტიურ კატალოგს, ფასებსა და მარაგებს პასუხის გაცემისას.</small>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="aiTone">კომუნიკაციის ტონალობა</label>
+                                <select id="aiTone">
+                                    <option value="official_humorous">ოფიციალური / საქმიანი მსუბუქი იუმორით (რეკომენდებული)</option>
+                                    <option value="friendly">მეგობრული & არაფორმალური</option>
+                                    <option value="strict">მხოლოდ მკაცრად საქმიანი</option>
+                                </select>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="fallbackMessage">პასუხი როცა პროდუქტი ამოწურულია (Out-of-Stock Fallback)</label>
+                                <textarea id="fallbackMessage" rows="3"></textarea>
+                            </div>
+
+                            <button type="button" class="btn btn-primary" onclick="saveAISettings()">პარამეტრების შენახვა</button>
+                        </form>
+                    </div>
+                </section>
+
+                <!-- 6. MARKETING & BROADCAST TAB -->
+                <section id="tab-marketing" class="tab-pane" style="display: none;">
+                    <!-- Creative Marketing & Promo Presets Generator -->
+                    <div class="panel-card" style="margin-bottom: 1.5rem;">
+                        <div class="panel-header">
+                            <div class="panel-title">⚡ კრეატიული აქციების & პრომოების გენერატორი (High-Converting Vape Campaigns)</div>
+                            <small style="color: var(--text-muted)">დააჭირეთ შაბლონს ტექსტის ჩასასმელად ან Gemini AI-ით მოსარგებად</small>
+                        </div>
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem;">
+                            <!-- 1. Flash Sale -->
+                            <div class="campaign-preset-card" style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 1rem; display: flex; flex-direction: column; justify-content: space-between;">
+                                <div>
+                                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                                        <span style="font-weight: 700; color: #f59e0b; font-size: 0.95rem;">🔥 FLASH SALE (-20%)</span>
+                                        <span class="badge" style="background: rgba(245, 158, 11, 0.15); color: #f59e0b;">24 საათი</span>
+                                    </div>
+                                    <p style="font-size: 0.82rem; color: var(--text-muted); line-height: 1.4; margin-bottom: 0.75rem;">
+                                        შეზღუდული დროის ცხელი აქცია — ნებისმიერ 2 სითხეზე 20%-იანი ფასდაკლება.
+                                    </p>
+                                </div>
+                                <div style="display: flex; gap: 0.5rem;">
+                                    <button type="button" class="btn btn-secondary btn-sm" style="flex: 1;" onclick="applyPromoPreset('flash_sale')">📝 ჩასმა</button>
+                                    <button type="button" class="btn btn-primary btn-sm" onclick="applyPromoPreset('flash_sale', true)">✨ AI</button>
+                                </div>
+                            </div>
+
+                            <!-- 2. Combo & Bundle -->
+                            <div class="campaign-preset-card" style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 1rem; display: flex; flex-direction: column; justify-content: space-between;">
+                                <div>
+                                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                                        <span style="font-weight: 700; color: #10b981; font-size: 0.95rem;">🎁 SUPER COMBO DEAL</span>
+                                        <span class="badge" style="background: rgba(16, 185, 129, 0.15); color: #10b981;">1+1 საჩუქრად</span>
+                                    </div>
+                                    <p style="font-size: 0.82rem; color: var(--text-muted); line-height: 1.4; margin-bottom: 0.75rem;">
+                                        კომბო შეთავაზება: შეიძინეთ 2 პრემიუმ სითხე და მიიღეთ მე-3 სითხე ან ქოილი საჩუქრად!
+                                    </p>
+                                </div>
+                                <div style="display: flex; gap: 0.5rem;">
+                                    <button type="button" class="btn btn-secondary btn-sm" style="flex: 1;" onclick="applyPromoPreset('combo_deal')">📝 ჩასმა</button>
+                                    <button type="button" class="btn btn-primary btn-sm" onclick="applyPromoPreset('combo_deal', true)">✨ AI</button>
+                                </div>
+                            </div>
+
+                            <!-- 3. Free Delivery Promo -->
+                            <div class="campaign-preset-card" style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 1rem; display: flex; flex-direction: column; justify-content: space-between;">
+                                <div>
+                                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                                        <span style="font-weight: 700; color: #6366f1; font-size: 0.95rem;">🚚 უფასო მიწოდება</span>
+                                        <span class="badge" style="background: rgba(99, 102, 241, 0.15); color: #6366f1;">45₾+ შეკვეთაზე</span>
+                                    </div>
+                                    <p style="font-size: 0.82rem; color: var(--text-muted); line-height: 1.4; margin-bottom: 0.75rem;">
+                                        უფასო მიწოდების დღეები — Yandex საკურიერო თბილისში და რეგიონებში სრულიად უფასოდ!
+                                    </p>
+                                </div>
+                                <div style="display: flex; gap: 0.5rem;">
+                                    <button type="button" class="btn btn-secondary btn-sm" style="flex: 1;" onclick="applyPromoPreset('free_delivery')">📝 ჩასმა</button>
+                                    <button type="button" class="btn btn-primary btn-sm" onclick="applyPromoPreset('free_delivery', true)">✨ AI</button>
+                                </div>
+                            </div>
+
+                            <!-- 4. New Flavor Drop -->
+                            <div class="campaign-preset-card" style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 1rem; display: flex; flex-direction: column; justify-content: space-between;">
+                                <div>
+                                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                                        <span style="font-weight: 700; color: #ec4899; font-size: 0.95rem;">🫐 NEW FLAVORS DROP</span>
+                                        <span class="badge" style="background: rgba(236, 72, 153, 0.15); color: #ec4899;">ექსკლუზივი</span>
+                                    </div>
+                                    <p style="font-size: 0.82rem; color: var(--text-muted); line-height: 1.4; margin-bottom: 0.75rem;">
+                                        ჩამოვიდა ყველაზე მოთხოვნადი Elfliq, Chaser & Asian Bomb-ის ახალი კენკროვანი გემოები!
+                                    </p>
+                                </div>
+                                <div style="display: flex; gap: 0.5rem;">
+                                    <button type="button" class="btn btn-secondary btn-sm" style="flex: 1;" onclick="applyPromoPreset('new_drop')">📝 ჩასმა</button>
+                                    <button type="button" class="btn btn-primary btn-sm" onclick="applyPromoPreset('new_drop', true)">✨ AI</button>
+                                </div>
+                            </div>
+
+                            <!-- 5. VIP Promo Drop -->
+                            <div class="campaign-preset-card" style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 1rem; display: flex; flex-direction: column; justify-content: space-between;">
+                                <div>
+                                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                                        <span style="font-weight: 700; color: #8b5cf6; font-size: 0.95rem;">👑 VIP PROMO DROP</span>
+                                        <span class="badge" style="background: rgba(139, 92, 246, 0.15); color: #8b5cf6;">კოდი: GEOVIP</span>
+                                    </div>
+                                    <p style="font-size: 0.82rem; color: var(--text-muted); line-height: 1.4; margin-bottom: 0.75rem;">
+                                        საიდუმლო VIP პრომოკოდი გამომწერებისთვის - შეიყვანეთ შეკვეთისას და მიიღეთ 10% ფასდაკლება.
+                                    </p>
+                                </div>
+                                <div style="display: flex; gap: 0.5rem;">
+                                    <button type="button" class="btn btn-secondary btn-sm" style="flex: 1;" onclick="applyPromoPreset('vip_code')">📝 ჩასმა</button>
+                                    <button type="button" class="btn btn-primary btn-sm" onclick="applyPromoPreset('vip_code', true)">✨ AI</button>
+                                </div>
+                            </div>
+
+                            <!-- 6. Weekend Clouds -->
+                            <div class="campaign-preset-card" style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 1rem; display: flex; flex-direction: column; justify-content: space-between;">
+                                <div>
+                                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                                        <span style="font-weight: 700; color: #3b82f6; font-size: 0.95rem;">💨 WEEKEND CLOUDS</span>
+                                        <span class="badge" style="background: rgba(59, 130, 246, 0.15); color: #3b82f6;">სპეციალური ფასი</span>
+                                    </div>
+                                    <p style="font-size: 0.82rem; color: var(--text-muted); line-height: 1.4; margin-bottom: 0.75rem;">
+                                        შაბათ-კვირას ყველა 30ml პრემიუმ სითხე განსაკუთრებულ ფასად — მხოლოდ 22 ლარად!
+                                    </p>
+                                </div>
+                                <div style="display: flex; gap: 0.5rem;">
+                                    <button type="button" class="btn btn-secondary btn-sm" style="flex: 1;" onclick="applyPromoPreset('weekend_sale')">📝 ჩასმა</button>
+                                    <button type="button" class="btn btn-primary btn-sm" onclick="applyPromoPreset('weekend_sale', true)">✨ AI</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;">
+                        <!-- Broadcast -->
+                        <div class="panel-card">
+                            <div class="panel-header">
+                                <div class="panel-title">📢 Telegram Broadcast (მასობრივი მესიჯი)</div>
+                            </div>
+                            <form id="broadcastForm">
+                                <div class="form-group">
+                                    <label for="broadcastTarget">გაგზავნის სამიზნე აუდიტორია</label>
+                                    <select id="broadcastTarget" style="width: 100%; padding: 0.6rem; border-radius: 6px; background: var(--bg-card); color: var(--text); border: 1px solid var(--border);">
+                                        <option value="all">ყველა (ბოტის მომხმარებლები + ჩანელის გამომწერები - პირადში)</option>
+                                        <option value="bot_users">მხოლოდ ბოტის მომხმარებლები (ვისაც ოდესმე მიუწერია ბოტში)</option>
+                                        <option value="channel">მხოლოდ ტელეგრამ ჩანელის გამომწერები (@Geosteamforeveryone - პირადში)</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label>შეტყობინების ტექსტი (Markdown მხარდაჭერით)</label>
+                                    <textarea id="broadcastText" rows="5" placeholder="მაგ: 🎉 დღეს გვაქვს 20% ფასდაკლება Elfliq-ის ყველა სითხეზე!"></textarea>
+                                </div>
+                                <div class="form-group">
+                                    <label>ფოტოს ბმული (სურვილისამებრ URL ან ატვირთეთ)</label>
+                                    <input type="text" id="broadcastPhotoUrl" placeholder="https://example.com/image.jpg">
+                                </div>
+                                <div style="display: flex; gap: 0.75rem;">
+                                    <button type="button" class="btn btn-secondary" onclick="enhanceBroadcastWithAI()">✨ AI გალამაზება</button>
+                                    <button type="button" class="btn btn-primary" style="flex: 1;" onclick="sendBroadcastMessage()">
+                                        🚀 გაგზავნა
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+
+                        <!-- Promo Codes -->
+                        <div class="panel-card">
+                            <div class="panel-header">
+                                <div class="panel-title">🎟️ პრომოკოდები</div>
+                            </div>
+                            <div style="display: flex; gap: 0.5rem; margin-bottom: 1rem;">
+                                <input type="text" id="newPromoCode" class="form-group input" placeholder="კოდი (მაგ: VAPE20)">
+                                <input type="number" id="newPromoPercent" placeholder="%" style="width: 80px;">
+                                <button class="btn btn-primary btn-sm" onclick="createPromoCode()">დამატება</button>
+                            </div>
+                            <div class="table-responsive">
+                                <table>
+                                    <thead>
+                                        <tr>
+                                            <th>კოდი</th>
+                                            <th>ფასდაკლება</th>
+                                            <th>გამოყენებულია</th>
+                                            <th>წაშლა</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="promoCodesTableBody">
+                                        <!-- Dynamic promo rows -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- 7. SETTINGS TAB -->
+                <section id="tab-settings" class="tab-pane" style="display: none;">
+                    <div class="panel-card">
+                        <div class="panel-header">
+                            <div class="panel-title">⚙️ მაღაზიის ლოჯისტიკა, უსაფრთხოება და პარამეტრები</div>
+                        </div>
+                        <form id="storeSettingsForm">
+                            <!-- 1. Delivery Logistics -->
+                            <h3 style="font-size: 1rem; margin-bottom: 1rem; color: var(--primary);">🚚 მიწოდების ლოჯისტიკა და ტარიფები</h3>
+                            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-bottom: 1rem;">
+                                <label style="display: flex; align-items: center; gap: 0.5rem;">
+                                    <input type="checkbox" id="deliveryCourierEnabled"> 🛵 თბილისი (Yandex საკურიერო)
+                                </label>
+                                <label style="display: flex; align-items: center; gap: 0.5rem;">
+                                    <input type="checkbox" id="deliveryPickupEnabled"> 🏬 თვითგატანა (მაღაზიიდან)
+                                </label>
+                                <label style="display: flex; align-items: center; gap: 0.5rem;">
+                                    <input type="checkbox" id="deliveryMailEnabled"> 📦 რეგიონებში მიწოდება
+                                </label>
+                            </div>
+
+                            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem; margin-bottom: 1.25rem; background: var(--bg-card); padding: 1rem; border-radius: 8px; border: 1px solid var(--border);">
+                                <div class="form-group" style="margin-bottom: 0;">
+                                    <label>რეგიონები - მუნიციპალური ცენტრი (₾)</label>
+                                    <input type="number" step="0.5" id="deliveryRegionsCenterFee" value="9.0" placeholder="9.0">
+                                </div>
+                                <div class="form-group" style="margin-bottom: 0;">
+                                    <label>რეგიონები - სოფლები / დასახლებები (₾)</label>
+                                    <input type="number" step="0.5" id="deliveryRegionsVillageFee" value="12.0" placeholder="12.0">
+                                </div>
+                                <div class="form-group" style="margin-bottom: 0;">
+                                    <label>რეგიონში მიწოდების ვადა (სამუშაო დღე)</label>
+                                    <input type="number" id="deliveryRegionsDurationDays" value="3" placeholder="3">
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label>თვითგატანის მაღაზიის მისამართი</label>
+                                <input type="text" id="pickupAddress" placeholder="მაგ: თბილისი, რუსთაველის გამზ. #10">
+                            </div>
+
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                                <div class="form-group">
+                                    <label>Latitude (რუკის კოორდინატი)</label>
+                                    <input type="number" step="any" id="pickupLat">
+                                </div>
+                                <div class="form-group">
+                                    <label>Longitude (რუკის კოორდინატი)</label>
+                                    <input type="number" step="any" id="pickupLng">
+                                </div>
+                            </div>
+
+                            <!-- 2. Bank & Security Shield -->
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin: 2rem 0 1rem;">
+                                <h3 style="font-size: 1rem; margin: 0; color: var(--primary);">💳 საბანკო რეკვიზიტები & Zero-Friction Security Shield</h3>
+                                <span class="badge badge-success" id="securityShieldBadge" style="display: flex; align-items: center; gap: 4px;">
+                                    🛡️ Security Shield აქტიურია
+                                </span>
+                            </div>
+
+                            <div style="display: flex; gap: 1.5rem; margin-bottom: 1rem;">
+                                <label style="display: flex; align-items: center; gap: 0.5rem;">
+                                    <input type="checkbox" id="paymentCashEnabled"> ნაღდი ანგარიშსწორება
+                                </label>
+                                <label style="display: flex; align-items: center; gap: 0.5rem;">
+                                    <input type="checkbox" id="paymentBankEnabled"> საბანკო გადარიცხვა
+                                </label>
+                            </div>
+
+                            <div style="display: grid; grid-template-columns: 1fr 2fr 2fr; gap: 1rem;">
+                                <div class="form-group">
+                                    <label>ბანკის დასახელება</label>
+                                    <input type="text" id="bankName" placeholder="TBC / BOG">
+                                </div>
+                                <div class="form-group">
+                                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                                        <label>IBAN ანგარიში (GE...)</label>
+                                        <button type="button" class="btn btn-secondary btn-sm" style="padding: 2px 6px; font-size: 0.75rem;" onclick="toggleIbanVisibility()">👁️ გამოჩენა</button>
+                                    </div>
+                                    <input type="text" id="bankIban" placeholder="GE29TB7592436080100003" maxlength="32">
+                                </div>
+                                <div class="form-group">
+                                    <label>მიმღების დასახელება</label>
+                                    <input type="text" id="bankRecipient" placeholder="შპს გეოსტიმ">
+                                </div>
+                            </div>
+
+                            <!-- Security Audit Logs Box -->
+                            <div style="margin: 1.25rem 0; background: var(--bg-card); padding: 1rem; border-radius: 8px; border: 1px solid var(--border);">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+                                    <span style="font-size: 0.88rem; font-weight: 600; color: var(--text);">🛡️ უსაფრთხოების აუდიტის ჟურნალი (Anti-Tamper Audit)</span>
+                                    <button type="button" class="btn btn-secondary btn-sm" onclick="loadSecurityLogs()">🔄 განახლება</button>
+                                </div>
+                                <div class="table-responsive" style="max-height: 180px; overflow-y: auto;">
+                                    <table>
+                                        <thead>
+                                            <tr>
+                                                <th>დრო</th>
+                                                <th>მომხმარებელი</th>
+                                                <th>ქმედება</th>
+                                                <th>დეტალები</th>
+                                                <th>სტატუსი</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="securityLogsTableBody">
+                                            <!-- Dynamic security log rows -->
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+
+                            <!-- 3. Notifications & SMTP -->
+                            <h3 style="font-size: 1rem; margin: 1.5rem 0 1rem; color: var(--primary);">🔔 შეტყობინებების მიღება (Telegram & Email)</h3>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                                <div class="form-group">
+                                    <label>ადმინის Telegram ID-ები (მძიმით გამოყოფილი)</label>
+                                    <input type="text" id="adminTelegramIds" placeholder="მაგ: 12345678, 87654321">
+                                    <small style="color: var(--text-muted)">ამ ID-ებზე მოდის ახალი შეკვეთის და ოპერატორის მოთხოვნის ალერტები.</small>
+                                </div>
+                                <div class="form-group">
+                                    <label>ადმინის ელ-ფოსტა (Email Alert)*</label>
+                                    <input type="email" id="adminEmail" placeholder="yourshop@gmail.com">
+                                    <small style="color: var(--text-muted)">აქ მიიღებთ შეკვეთის დეტალურ შეტყობინებას მომხმარებლის მონაცემებით.</small>
+                                </div>
+                            </div>
+
+                            <h3 style="font-size: 1rem; margin: 1.5rem 0 1rem; color: var(--primary);">📧 SMTP სერვერის პარამეტრები (ელ-ფოსტის გასაგზავნად)</h3>
+                            <div style="display: grid; grid-template-columns: 2fr 1fr 2fr 2fr; gap: 1rem;">
+                                <div class="form-group">
+                                    <label>SMTP Host</label>
+                                    <input type="text" id="smtpHost" placeholder="smtp.gmail.com">
+                                </div>
+                                <div class="form-group">
+                                    <label>Port</label>
+                                    <input type="number" id="smtpPort" placeholder="587">
+                                </div>
+                                <div class="form-group">
+                                    <label>SMTP მომხმარებელი (User)</label>
+                                    <input type="text" id="smtpUser" placeholder="yourshop@gmail.com">
+                                </div>
+                                <div class="form-group">
+                                    <label>SMTP პაროლი (App Password)</label>
+                                    <input type="password" id="smtpPassword" placeholder="••••••••••••">
+                                </div>
+                            </div>
+
+                            <div style="display: flex; gap: 1rem; margin-top: 1.5rem; align-items: center;">
+                                <button type="button" class="btn btn-primary" onclick="saveStoreSettings()">💾 ცვლილებების შენახვა</button>
+                                <button type="button" class="btn btn-secondary" onclick="testEmailConnection()">📧 სატესტო იმეილის გაგზავნა</button>
+                            </div>
+                        </form>
+                    </div>
+                </section>
+
+                <!-- 8. BLACKLIST TAB -->
+                <section id="tab-blacklist" class="tab-pane" style="display: none;">
+                    <div class="panel-card">
+                        <div class="panel-header">
+                            <div>
+                                <div class="panel-title">🚫 შავი სია (Black List) — თაღლითობის საწინააღმდეგო ფარი</div>
+                                <div style="font-size: 0.85rem; color: var(--text-muted); margin-top: 4px;">
+                                    AI Vision-ის მიერ ავტომატურად გამოვლენილი ყალბი / შეუსაბამო ქვითრების მქონე და ადმინის მიერ დაბლოკილი მომხმარებლები.
+                                </div>
+                            </div>
+                            <button class="btn btn-primary btn-sm" onclick="openAddBlacklistModal()">+ ხელით დამატება</button>
+                        </div>
+                        <div class="table-responsive">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>ID</th>
+                                        <th>Telegram ID</th>
+                                        <th>მომხმარებელი</th>
+                                        <th>დაბლოკვის მიზეზი (AI Vision Audit)</th>
+                                        <th>ქვითარი</th>
+                                        <th>თარიღი</th>
+                                        <th>მოქმედება</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="blacklistTableBody">
+                                    <tr><td colspan="7" style="text-align:center;">იტვირთება...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>
+            </div>
+        </main>
+    </div>
+
+    <!-- Product Create/Edit Modal -->
+    <div class="modal-overlay" id="productModal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="productModalTitle">ახალი ვეიპ სითხის დამატება</h3>
+                <button class="btn btn-secondary btn-sm" onclick="closeProductModal()">✕</button>
+            </div>
+            <form id="productForm">
+                <input type="hidden" id="modalProductId">
+                <div class="form-group">
+                    <label>დასახელება (არომატი / ბრენდი)*</label>
+                    <input type="text" id="modalProdName" required placeholder="მაგ: Elfliq Watermelon Ice">
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                    <div class="form-group">
+                        <label>ფასი (GEL)*</label>
+                        <input type="number" step="0.5" id="modalProdPrice" required placeholder="25.00">
+                    </div>
+                    <div class="form-group">
+                        <label>მოცულობა (ml)</label>
+                        <input type="number" id="modalProdVolume" value="30">
+                    </div>
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                    <div class="form-group">
+                        <label>VG/PG თანაფარდობა</label>
+                        <input type="text" id="modalProdVgPg" value="50/50" placeholder="50/50 ან 70/30">
+                    </div>
+                    <div class="form-group">
+                        <label>ნიკოტინის რაოდენობა</label>
+                        <input type="text" id="modalProdNicotine" value="20mg" placeholder="20mg, 50mg, 0mg">
+                    </div>
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                    <div class="form-group">
+                        <label>მარაგი (ცალი)</label>
+                        <input type="number" id="modalProdStock" value="10">
+                    </div>
+                    <div class="form-group">
+                        <label>ტიპი / კატეგორია</label>
+                        <input type="text" id="modalProdColorType" value="Salt Nicotine">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>აღწერა</label>
+                    <textarea id="modalProdDesc" rows="3" placeholder="გემოს დეტალური აღწერა..."></textarea>
+                </div>
+                <div class="form-group">
+                    <label>ტელეგრამ ჩანელის პოსტის ბმული (Post URL)</label>
+                    <input type="text" id="modalProdChannelUrl" placeholder="https://t.me/yourchannel/123">
+                </div>
+                <div class="form-group">
+                    <label>ფოტოს URL ან Telegram File ID</label>
+                    <input type="text" id="modalProdPhotoUrl" placeholder="URL ან ტელეგრამის ფაილის ID">
+                </div>
+
+                <div style="display: flex; justify-content: flex-end; gap: 0.75rem; margin-top: 1.5rem;">
+                    <button type="button" class="btn btn-secondary" onclick="closeProductModal()">გაუქმება</button>
+                    <button type="button" class="btn btn-primary" onclick="saveProduct()">შენახვა</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- High-Resolution Receipt Authenticity Inspector Modal -->
+    <div class="modal-overlay" id="receiptModal" style="display: none;">
+        <div class="modal-content receipt-inspector-modal" style="max-width: 900px; width: 95vw; height: 90vh; display: flex; flex-direction: column; padding: 0;">
+            <div class="modal-header" style="padding: 1rem 1.5rem; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; background: var(--bg-card);">
+                <div>
+                    <h3 id="receiptModalTitle" style="margin: 0; font-size: 1.1rem; display: flex; align-items: center; gap: 8px;">
+                        <span>🔍</span> ქვითრის ავთენტურობის შემოწმება
+                    </h3>
+                    <div id="receiptModalSubtitle" style="font-size: 0.82rem; color: var(--text-muted); margin-top: 2px;">
+                        გაადიდეთ და შეამოწმეთ ტრანზაქციის ID, თარიღი, IBAN და თანხა
+                    </div>
+                </div>
+                <div style="display: flex; gap: 0.5rem; align-items: center;">
+                    <!-- Zoom Toolbar -->
+                    <div class="receipt-zoom-toolbar">
+                        <button type="button" class="btn btn-secondary btn-sm" onclick="zoomReceipt(-0.25)" title="დაპატარავება">🔍−</button>
+                        <span id="receiptZoomLevel" style="font-size: 0.8rem; font-weight: 600; padding: 0 6px;">100%</span>
+                        <button type="button" class="btn btn-secondary btn-sm" onclick="zoomReceipt(0.25)" title="გადიდება">🔍+</button>
+                        <button type="button" class="btn btn-secondary btn-sm" onclick="resetReceiptZoom()" title="საწყის ზომაზე დაბრუნება">🔄 100%</button>
+                        <a id="receiptDownloadBtn" href="" target="_blank" class="btn btn-secondary btn-sm" title="ორიგინალი HD ფაილის გახსნა">↗️ HD</a>
+                    </div>
+                    <button class="btn btn-secondary btn-sm" onclick="closeReceiptModal()" style="margin-left: 8px;">✕</button>
+                </div>
+            </div>
+
+            <!-- Viewport Area (Drag to pan) -->
+            <div id="receiptViewport" class="receipt-viewport" style="flex: 1; overflow: auto; background: #0b0f19; display: flex; justify-content: center; align-items: center; position: relative; cursor: grab;">
+                <img id="receiptModalImg" src="" alt="ქვითარი" style="max-width: 90%; max-height: 85%; transform-origin: center center; transition: transform 0.15s ease-out; box-shadow: 0 8px 32px rgba(0,0,0,0.6); border-radius: 6px;">
+            </div>
+
+            <!-- Bottom Action Footer -->
+            <div class="modal-footer" style="padding: 0.85rem 1.5rem; border-top: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; background: var(--bg-card);">
+                <div id="receiptOrderInfoPill" style="font-size: 0.88rem; color: var(--text-main); font-weight: 500;">
+                    შეკვეთის ინფორმაცია...
+                </div>
+                <div style="display: flex; gap: 0.75rem;">
+                    <button type="button" class="btn btn-danger btn-sm" id="rejectReceiptBtn" onclick="rejectCurrentReceipt()">
+                        ❌ უარყოფა (არასწორია)
+                    </button>
+                    <button type="button" class="btn btn-success btn-sm" id="approveReceiptBtn" onclick="approveCurrentReceipt()" style="background: var(--success); color: #fff; font-weight: 600;">
+                        ✅ გადახდა სწორია (დადასტურება)
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Floating Admin AI Copilot Button -->
+    <button id="adminCopilotTriggerBtn" class="copilot-floating-btn" onclick="toggleAdminCopilot()" title="Geosteam AI ასისტენტი">
+        <span class="copilot-btn-sparkle">✨</span>
+        <span class="copilot-btn-text">AI ასისტენტი</span>
+        <span class="copilot-status-dot"></span>
+    </button>
+
+    <!-- Floating Admin AI Copilot Window -->
+    <div id="adminCopilotWindow" class="copilot-window" style="display: none;">
+        <div class="copilot-header">
+            <div class="copilot-title-group">
+                <div class="copilot-icon-badge">🤖</div>
+                <div>
+                    <div class="copilot-title">Geosteam Admin AI ასისტენტი</div>
+                    <div class="copilot-subtitle">● Gemini 3.8 Flash • ოპერაციების მართვა</div>
+                </div>
+            </div>
+            <div class="copilot-actions">
+                <button class="copilot-icon-btn" onclick="clearCopilotHistory()" title="ჩატის გასუფთავება">🗑️</button>
+                <button class="copilot-icon-btn" onclick="toggleAdminCopilot()" title="დახურვა">✕</button>
+            </div>
+        </div>
+
+        <div class="copilot-chips-bar">
+            <button class="copilot-chip" onclick="quickCopilotPrompt('მაჩვენე მაღაზიის საერთო ანალიტიკა და ბოლო შეკვეთები')">📊 ანალიტიკა</button>
+            <button class="copilot-chip" onclick="quickCopilotPrompt('რომელ სითხეებზე გვაქვს მცირე მარაგი?')">⚠️ მარაგები</button>
+            <button class="copilot-chip" onclick="quickCopilotPrompt('არის თუ არა გადაუმოწმებელი ქვითრები?')">🧾 ქვითრები</button>
+            <button class="copilot-chip" onclick="quickCopilotPrompt('შექმენი ახალი სარეკლამო პოსტი ტელეგრამ ჩანელისთვის Asian Bomb-ზე')">📢 პოსტის დაგეგმვა</button>
+        </div>
+
+        <div id="copilotMessagesBox" class="copilot-messages-box">
+            <div class="copilot-msg copilot-msg-assistant">
+                <div class="copilot-msg-header">🤖 Geosteam Admin Copilot</div>
+                <div class="copilot-msg-content">
+                    გამარჯობა! 👋 მე ვარ თქვენი ადმინ პანელის AI ასისტენტი.<br><br>
+                    შემიძლია შევამოწმო და შევცვალო მარაგები, დავამატო ახალი სითხეები, განვაახლო შეკვეთების სტატუსები, დავგეგმო პოსტები ჩანელში ან გაჩვენოთ გაყიდვების ანალიტიკა.<br><br>
+                    რით შემიძლია დაგეხმაროთ?
+                </div>
+            </div>
+        </div>
+
+        <div class="copilot-input-bar">
+            <textarea id="copilotUserInput" class="copilot-textarea" placeholder="მიუთითეთ ბრძანება (მაგ: Asian Bomb-ის ფასი გახადე 52₾)..." rows="1" onkeydown="handleCopilotKeyDown(event)"></textarea>
+            <button id="copilotSendBtn" class="btn btn-primary copilot-send-button" onclick="sendCopilotMessage()">
+                ➤
+            </button>
+        </div>
+    </div>
+
+    <!-- Mobile Access & Telegram Mini App Modal -->
+    <div class="modal-overlay" id="mobileAccessModal" style="display: none;">
+        <div class="modal-content" style="max-width: 520px;">
+            <div class="modal-header">
+                <h3 style="display: flex; align-items: center; gap: 8px; margin: 0;">
+                    <span>📱</span> მობილური / Mini App წვდომა
+                </h3>
+                <button class="btn btn-secondary btn-sm" onclick="closeMobileAccessModal()">✕</button>
+            </div>
+            <div style="padding: 1rem 0; text-align: center;">
+                <div style="background: #ffffff; padding: 16px; border-radius: 12px; display: inline-block; box-shadow: 0 4px 20px rgba(0,0,0,0.3); margin-bottom: 1rem;">
+                    <img id="mobileQrCodeImg" src="" alt="QR Code" style="width: 180px; height: 180px; display: block; margin: 0 auto; border-radius: 4px;">
+                </div>
+                <div style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1rem;">
+                    დაასკანერეთ QR კოდი ტელეფონის კამერით (იმავე Wi-Fi-ზე)
+                </div>
+
+                <div class="form-group" style="text-align: left;">
+                    <label style="font-size: 0.85rem; font-weight: 600;">🌐 მობილური ბრაუზერის ბმული (LAN IP):</label>
+                    <div style="display: flex; gap: 0.5rem;">
+                        <input type="text" id="mobileAccessUrlInput" readonly style="font-family: monospace; font-size: 0.88rem; background: var(--bg-card); color: var(--primary);">
+                        <button type="button" class="btn btn-secondary btn-sm" onclick="copyMobileUrl()">📋 კოპირება</button>
+                    </div>
+                </div>
+
+                <div style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 1rem; text-align: left; margin-top: 1rem;">
+                    <div style="font-weight: 600; font-size: 0.88rem; color: var(--primary); margin-bottom: 0.5rem; display: flex; align-items: center; gap: 6px;">
+                        <span>🤖</span> Telegram Bot-ით პირდაპირ გახსნა
+                    </div>
+                    <p style="font-size: 0.82rem; color: var(--text-muted); line-height: 1.5; margin: 0;">
+                        ჩაწერეთ ბოტში ბრძანება <code>/admin</code> ან <code>/start</code> და ბოტი გამოგიგზავნით პირდაპირ ღილაკს პანელის მობილურში გასახსნელად.
+                    </p>
+                </div>
+            </div>
+            <div style="display: flex; justify-content: flex-end; margin-top: 0.5rem;">
+                <button type="button" class="btn btn-secondary" onclick="closeMobileAccessModal()">დახურვა</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Blacklist User Manual Add Modal -->
+    <div class="modal-overlay" id="addBlacklistModal" style="display: none;">
+        <div class="modal-content" style="max-width: 480px;">
+            <div class="modal-header">
+                <h3>🚫 მომხმარებლის შავ სიაში დამატება</h3>
+                <button class="btn btn-secondary btn-sm" onclick="closeAddBlacklistModal()">✕</button>
+            </div>
+            <form id="addBlacklistForm" onsubmit="event.preventDefault(); submitAddBlacklist();">
+                <div class="form-group">
+                    <label>Telegram ID (ციფრები)*</label>
+                    <input type="number" id="blTelegramId" required placeholder="მაგ: 123456789">
+                </div>
+                <div class="form-group">
+                    <label>მომხმარებლის სახელი / Username</label>
+                    <input type="text" id="blUsername" placeholder="მაგ: @username ან სახელი">
+                </div>
+                <div class="form-group">
+                    <label>დაბლოკვის მიზეზი*</label>
+                    <textarea id="blReason" rows="3" required placeholder="მაგ: ყალბი ქვითრის გამოგზავნა / თაღლითობის მცდელობა"></textarea>
+                </div>
+                <div style="display: flex; justify-content: flex-end; gap: 0.75rem; margin-top: 1.5rem;">
+                    <button type="button" class="btn btn-secondary" onclick="closeAddBlacklistModal()">გაუქმება</button>
+                    <button type="submit" class="btn btn-danger">🚫 დაბლოკვა და დამატება</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="/static/js/app.js"></script>
+    <script src="/static/js/livechat.js"></script>
+</body>
+</html>
