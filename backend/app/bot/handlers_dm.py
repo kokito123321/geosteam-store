@@ -493,6 +493,8 @@ async def handle_text_or_multimedia(update: Update, context: ContextTypes.DEFAUL
     if not message:
         return
 
+    user = update.effective_user
+    chat_id = update.effective_chat.id
     text = message.text or ""
 
     async with async_session_maker() as session:
