@@ -182,8 +182,8 @@ class GeminiService:
     def client(self) -> Optional[genai.Client]:
         if not self._client:
             try:
-                # 1. First prioritize GEMINI_API_KEY if available (standard Developer API for cloud & local)
-                api_key = (self.api_key or settings.GEMINI_API_KEY or os.environ.get("GEMINI_API_KEY", "")).strip().strip('"').strip("'")
+                # 1. First prioritize GEMINI_API_KEY / GOOGLE_API_KEY if available (standard Developer API for cloud & local)
+                api_key = (self.api_key or settings.GEMINI_API_KEY or os.environ.get("GEMINI_API_KEY", "") or os.environ.get("GOOGLE_API_KEY", "")).strip().strip('"').strip("'")
                 if api_key:
                     logger.info(f"Connecting to Gemini API via API Key ({api_key[:6]}...)...")
                     self._client = genai.Client(api_key=api_key)
@@ -378,12 +378,114 @@ class GeminiService:
             "გისმენ! 💨 რით დაგეხმარო? შეგიძლია მკითხო სითხეებზე, არომატებზე, ლოკაციაზე ან მიწოდებაზე."
         )
 
+    def _generate_smart_fallback_post(self, raw_notes: str, image_url: Optional[str] = None) -> str:
+        """
+        Intelligent rule-based copywriter engine that transforms any raw notes into a
+        viral, beautifully-formatted Georgian Telegram post for @Geosteamforeveryone.
+        """
+        import re
+        lines = [line.strip() for line in (raw_notes or "").split("\n") if line.strip()]
+        if not lines:
+            return raw_notes
+
+        flavor_emojis = {
+            "ალუბალ": "🍒❄️",
+            "cherry": "🍒❄️",
+            "ბანან": "🍌",
+            "banana": "🍌",
+            "მოცვ": "🫐",
+            "blueberry": "🫐",
+            "ჟოლო": "🫐🍬",
+            "raspberry": "🫐🍬",
+            "კარამელ": "🍮🍬",
+            "caramel": "🍮🍬",
+            "მარწყვ": "🍓",
+            "strawberry": "🍓",
+            "მანგო": "🥭",
+            "mango": "🥭",
+            "საზამთრო": "🍉",
+            "watermelon": "🍉",
+            "ვაშლ": "🍏",
+            "apple": "🍏",
+            "ატამ": "🍑",
+            "peach": "🍑",
+            "ლიმონ": "🍋",
+            "lemon": "🍋",
+            "ყინულ": "❄️",
+            "ice": "❄️",
+            "პიტნ": "🌿❄️",
+            "mint": "🌿❄️",
+            "ყავა": "☕",
+            "coffee": "☕",
+            "ვანილ": "🍦",
+            "vanilla": "🍦",
+            "ყურძენ": "🍇",
+            "grape": "🍇",
+            "ანანას": "🍍",
+            "pineapple": "🍍",
+            "ენერგეტიკ": "⚡🔋",
+            "energy": "⚡🔋",
+            "თამბაქო": "🍂",
+            "tobacco": "🍂"
+        }
+
+        flavor_items = []
+        price_str = "20 ₾"
+        action_found = False
+
+        for line in lines:
+            line_lower = line.lower()
+            price_match = re.search(r'(\d+)\s*(?:ლარ|₾|gel|lari)?', line_lower)
+            if any(p_word in line_lower for p_word in ["ფასი", "ლარ", "₾", "აქცია", "sale", "price"]) and price_match:
+                price_str = f"{price_match.group(1)} ₾"
+                if "აქცი" in line_lower:
+                    action_found = True
+                continue
+
+            if any(intro_word in line_lower for intro_word in ["დაგვემატა", "ჩამოვიდა", "ახალი", "სითხეები", "მოგესალმებით", "გამარჯობა"]):
+                continue
+
+            matched_emoji = "✨"
+            for k, emoji in flavor_emojis.items():
+                if k in line_lower:
+                    matched_emoji = emoji
+                    break
+
+            flavor_items.append(f"• {matched_emoji} **{line}**")
+
+        headline = "🔥💣 **გემოების ნამდვილი აფეთქება ჯეოსტიმში! ახალი სითხეები უკვე ადგილზეა!** 💨🇬🇪"
+        if action_found:
+            headline = "🔥💣 **გიჟური აქცია ჯეოსტიმში! ახალი პრემიუმ სითხეები სპეციალურ ფასად!** 💥💨"
+
+        items_formatted = "\n".join(flavor_items) if flavor_items else "\n".join([f"• ✨ **{l}**" for l in lines])
+
+        post = (
+            f"{headline}\n\n"
+            f"ორთქლის მოყვარულებო, თქვენი Pod-ები მოამზადეთ! ჩვენთან ჩამოვიდა უმაღლესი ხარისხის, "
+            f"გაჯერებული და დაუვიწყარი არომატები, რომლებიც პირველივე ნაფაზიდან მოგხიბლავთ:\n\n"
+            f"✨ **ახალი არომატების ასორტიმენტი:**\n"
+            f"{items_formatted}\n\n"
+            f"---\n"
+            f"📌 **პროდუქტის მახასიათებლები:**\n"
+            f"• 💧 **მოცულობა:** 30 მლ\n"
+            f"• ⚡ **ნიკოტინის ტიპი:** Salt Nicotine (20mg / 50mg)\n"
+            f"• ⚖️ **VG/PG ბალანსი:** 50/50 (იდეალურია Pod სისტემებისთვის)\n"
+            f"• 💰 **სპეციალური ფასი:** **{price_str}** 💥\n\n"
+            f"---\n"
+            f"🚀 **მარაგი შეზღუდულია, იჩქარეთ!**\n\n"
+            f"🛒 **შესაკვეთად მოგვწერეთ პირადში ან გამოიყენეთ ჩვენი ბოტი:** @GeoSteamSupportBot\n"
+            f"🛵 **სწრაფი მიტანა თბილისში Yandex კურიერით | რეგიონებში 3 დღეში | თვითგატანა მაღაზიიდან**\n\n"
+            f"#Geosteam #ქართულიორთქლი #VapeGeorgia #VapeTbilisi #ELiquid #PremiumVape #VapeShopGeo"
+        )
+        return post
+
     async def generate_channel_post(self, raw_notes: str, image_url: Optional[str] = None) -> str:
         """
         Generates a creative, viral, high-converting Telegram post for @Geosteamforeveryone.
+        Falls back to intelligent copywriter engine if Gemini API is unavailable.
         """
-        if not self.client:
-            return raw_notes
+        if not (raw_notes or "").strip():
+            return ""
 
         system_prompt = (
             "შენ ხარ Geosteam-ის (ჯეოსტიმი / ქართული ორთქლი 🇬🇪💨) წამყვანი SMM და Copywriting ექსპერტი.\n"
@@ -394,7 +496,7 @@ class GeminiService:
             "2. **მადისაღმძვრელი Storytelling / გემოს აღწერა:** დეტალურად და ცოცხლად აღწერე არომატის ნოტები (ტკბილი, ცივი, მჟავე, ხილის წვნიანი ტონები), რათა მკითხველს პირველივე წაკითხვისას მოუნდეს გასინჯვა.\n"
             "3. **მკაფიო მახასიათებლები (Bullets & Emojis):**\n"
             "   • 💧 **მოცულობა:** [30ml / 60ml და ა.შ.]\n"
-            "   • ⚡ **ნიკოტინი:** [20mg Salt / 3mg / 6mg და ა.შ.]\n"
+            "   • ⚡ **ნიკოტინი:** [20mg Salt / 50mg / 3mg და ა.შ.]\n"
             "   • ⚖️ **VG/PG ბალანსი:** [50/50 Pod მოწყობილობებისთვის ან 70/30]\n"
             "   • 💰 **ფასი:** [მითითებული ფასი] ₾\n"
             "4. **მოწოდება მოქმედებისკენ (Call To Action):**\n"
@@ -407,42 +509,46 @@ class GeminiService:
             "- ტექსტი იყოს ცოცხალი, ენერგიული და სრულად დასრულებული."
         )
 
-        candidate_models = [
-            self.model_name,
-            "gemini-3.6-flash",
-            "gemini-3.8-flash"
-        ]
-        # Deduplicate while preserving order
-        unique_models = []
-        for m in candidate_models:
-            if m and m not in unique_models:
-                unique_models.append(m)
+        if self.client:
+            candidate_models = [
+                self.model_name,
+                "gemini-2.5-flash",
+                "gemini-2.0-flash",
+                "gemini-1.5-flash",
+                "gemini-1.5-pro",
+                "gemini-2.0-flash-lite"
+            ]
+            unique_models = []
+            for m in candidate_models:
+                if m and m not in unique_models:
+                    unique_models.append(m)
 
-        for model_cand in unique_models:
-            try:
-                config = types.GenerateContentConfig(
-                    system_instruction=system_prompt,
-                    temperature=0.85,
-                    max_output_tokens=4096
-                )
+            for model_cand in unique_models:
+                try:
+                    config = types.GenerateContentConfig(
+                        system_instruction=system_prompt,
+                        temperature=0.85,
+                        max_output_tokens=4096
+                    )
 
-                prompt = f"გთხოვთ ამ მოკლე ჩანაწერებზე დაყრდნობით შექმნა სრული, კრეატიული და გაყიდვადი Telegram პოსტი:\n\n{raw_notes}"
-                if image_url:
-                    prompt += f"\n(თანდართულია პროდუქტის ფოტო: {image_url})"
+                    prompt = f"გთხოვთ ამ მოკლე ჩანაწერებზე დაყრდნობით შექმნა სრული, კრეატიული და გაყიდვადი Telegram პოსტი:\n\n{raw_notes}"
+                    if image_url:
+                        prompt += f"\n(თანდართულია პროდუქტის ფოტო: {image_url})"
 
-                resp = await self.client.aio.models.generate_content(
-                    model=model_cand,
-                    contents=prompt,
-                    config=config
-                )
+                    resp = await self.client.aio.models.generate_content(
+                        model=model_cand,
+                        contents=prompt,
+                        config=config
+                    )
 
-                if resp and resp.text and len(resp.text.strip()) > 30:
-                    self.model_name = model_cand
-                    return resp.text.strip()
-            except Exception as err:
-                logger.warning(f"Error generating channel post with model {model_cand}: {err}")
+                    if resp and resp.text and len(resp.text.strip()) > 40:
+                        self.model_name = model_cand
+                        return resp.text.strip()
+                except Exception as err:
+                    logger.warning(f"Error generating channel post with model {model_cand}: {err}")
 
-        return raw_notes
+        # Intelligent fallback if API is unavailable
+        return self._generate_smart_fallback_post(raw_notes, image_url)
 
     async def verify_receipt_image(
         self,

@@ -503,14 +503,17 @@ async def update_store_settings(
 
 class AdminAssistantService:
     def __init__(self):
-        self.model_name = "gemini-3.8-flash"
+        self.model_name = settings.GEMINI_MODEL or "gemini-2.5-flash"
         self._client: Optional[genai.Client] = None
 
     @property
     def client(self) -> Optional[genai.Client]:
         if not self._client:
             try:
-                if settings.USE_VERTEX_AI or settings.GCP_PROJECT_ID:
+                api_key = (settings.GEMINI_API_KEY or os.environ.get("GEMINI_API_KEY", "") or os.environ.get("GOOGLE_API_KEY", "")).strip().strip('"').strip("'")
+                if api_key:
+                    self._client = genai.Client(api_key=api_key)
+                elif settings.USE_VERTEX_AI or settings.GCP_PROJECT_ID:
                     if settings.GOOGLE_APPLICATION_CREDENTIALS:
                         cred_path = Path(settings.GOOGLE_APPLICATION_CREDENTIALS)
                         if cred_path.exists():
@@ -521,8 +524,6 @@ class AdminAssistantService:
                         project=settings.GCP_PROJECT_ID or None,
                         location=settings.GCP_LOCATION or "global"
                     )
-                elif settings.GEMINI_API_KEY:
-                    self._client = genai.Client(api_key=settings.GEMINI_API_KEY)
             except Exception as e:
                 logger.error(f"Error initializing Admin Assistant Gemini Client: {e}")
                 self._client = None
