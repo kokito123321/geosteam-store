@@ -782,15 +782,10 @@
                             <div>
                                 <div class="panel-title">💾 მონაცემთა ბაზის დარეზერვება (Backup) & უსაფრთხოება</div>
                                 <div style="font-size: 0.85rem; color: var(--text-muted); margin-top: 4px;">
-                                    სისტემა <strong>დღეში მხოლოდ ერთხელ (24 საათში ერთხელ, 08:00 საათზე)</strong> ავტომატურად აგზავნის სრულ სარეზერვო ასლს ადმინისტრატორის Telegram-ში.
+                                    დაარეზერვეთ მონაცემთა ბაზა (პროდუქტები, შეკვეთები, მომხმარებლები) 1 კლიკით Telegram-ში ან ჩამოტვირთეთ თქვენს მოწყობილობაზე.
                                 </div>
                             </div>
-                            <div style="display: flex; align-items: center; gap: 8px;">
-                                <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 0.9rem; margin: 0;">
-                                    <input type="checkbox" id="autoBackupEnabled" onchange="saveStoreSettings()" checked>
-                                    <span>ავტომატური ყოველდღიური Backup</span>
-                                </label>
-                            </div>
+                            <span class="badge badge-success">🛡️ უსაფრთხო საცავი</span>
                         </div>
                         <div style="display: flex; gap: 1rem; align-items: center; margin-top: 1rem; flex-wrap: wrap;">
                             <button type="button" class="btn btn-primary" id="btnManualBackup" onclick="triggerManualBackup()">

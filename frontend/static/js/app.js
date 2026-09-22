@@ -1306,7 +1306,7 @@ async function saveStoreSettings() {
         smtp_port: document.getElementById('smtpPort') ? parseInt(document.getElementById('smtpPort').value) || 587 : 587,
         smtp_user: document.getElementById('smtpUser') ? document.getElementById('smtpUser').value.trim() : null,
         smtp_password: document.getElementById('smtpPassword') ? document.getElementById('smtpPassword').value.trim() : null,
-        auto_backup_enabled: document.getElementById('autoBackupEnabled') ? document.getElementById('autoBackupEnabled').checked : true
+        auto_backup_enabled: document.getElementById('autoBackupEnabled') ? document.getElementById('autoBackupEnabled').checked : false
     };
     try {
         const res = await fetch(`${API_BASE}/settings`, {

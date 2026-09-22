@@ -105,7 +105,7 @@ class StoreSettings(Base):
     smtp_from_email = Column(String(255), default="")
     security_shield_enabled = Column(Boolean, default=True)
     security_audit_logs = Column(Text, default="[]") # JSON list of security logs
-    auto_backup_enabled = Column(Boolean, default=True)
+    auto_backup_enabled = Column(Boolean, default=False)
     last_backup_date = Column(String(50), default="") # YYYY-MM-DD
 
 class PromoCode(Base):
