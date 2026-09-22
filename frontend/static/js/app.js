@@ -1246,6 +1246,7 @@ async function loadStoreSettings() {
         if (document.getElementById('smtpPort')) document.getElementById('smtpPort').value = s.smtp_port || 587;
         if (document.getElementById('smtpUser')) document.getElementById('smtpUser').value = s.smtp_user || '';
         if (document.getElementById('smtpPassword')) document.getElementById('smtpPassword').value = s.smtp_password || '';
+        if (document.getElementById('autoBackupEnabled')) document.getElementById('autoBackupEnabled').checked = (s.auto_backup_enabled !== false);
 
         loadSecurityLogs();
     } catch (e) { console.error(e); }
@@ -1304,7 +1305,8 @@ async function saveStoreSettings() {
         smtp_host: document.getElementById('smtpHost') ? document.getElementById('smtpHost').value.trim() : null,
         smtp_port: document.getElementById('smtpPort') ? parseInt(document.getElementById('smtpPort').value) || 587 : 587,
         smtp_user: document.getElementById('smtpUser') ? document.getElementById('smtpUser').value.trim() : null,
-        smtp_password: document.getElementById('smtpPassword') ? document.getElementById('smtpPassword').value.trim() : null
+        smtp_password: document.getElementById('smtpPassword') ? document.getElementById('smtpPassword').value.trim() : null,
+        auto_backup_enabled: document.getElementById('autoBackupEnabled') ? document.getElementById('autoBackupEnabled').checked : true
     };
     try {
         const res = await fetch(`${API_BASE}/settings`, {

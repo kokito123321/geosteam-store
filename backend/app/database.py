@@ -96,6 +96,14 @@ async def init_db():
         except Exception:
             pass
         try:
+            await conn.execute(text("ALTER TABLE store_settings ADD COLUMN auto_backup_enabled BOOLEAN DEFAULT 1"))
+        except Exception:
+            pass
+        try:
+            await conn.execute(text("ALTER TABLE store_settings ADD COLUMN last_backup_date VARCHAR(50) DEFAULT ''"))
+        except Exception:
+            pass
+        try:
             await conn.execute(text("ALTER TABLE chat_messages ADD COLUMN media_url VARCHAR(1024) DEFAULT ''"))
         except Exception:
             pass

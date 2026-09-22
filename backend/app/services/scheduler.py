@@ -44,16 +44,44 @@ class ChannelPostScheduler:
             await asyncio.sleep(30)
 
     async def _check_daily_backup(self):
-        """Performs automated daily database backup to Telegram at 04:00 UTC."""
+        """
+        Performs automated daily database backup to Telegram once every 24 hours (at 04:00 UTC / 08:00 AM Georgia time).
+        Persistently checks and records last_backup_date in database to prevent re-triggering on Render restarts.
+        """
         now = datetime.utcnow()
-        # Trigger if not run today and hour is >= 4
-        if self._last_backup_date != now.date() and now.hour >= 4:
+        # Only run during 04:00 - 04:59 UTC
+        if now.hour != 4:
+            return
+
+        today_str = now.strftime("%Y-%m-%d")
+
+        try:
+            from backend.app.models import StoreSettings
             from backend.app.services.backup_service import backup_service
-            logger.info("Initiating automated daily database backup to Telegram...")
-            success = await backup_service.send_backup_to_telegram()
-            if success:
-                self._last_backup_date = now.date()
-                logger.info("Automated daily backup completed successfully.")
+
+            async with async_session_maker() as session:
+                res = await session.execute(select(StoreSettings).limit(1))
+                st = res.scalars().first()
+                if not st:
+                    return
+
+                # Check if auto backup is enabled
+                if not getattr(st, "auto_backup_enabled", True):
+                    return
+
+                # Check if already backed up today
+                if getattr(st, "last_backup_date", "") == today_str:
+                    return
+
+                logger.info(f"Initiating scheduled daily database backup for {today_str}...")
+                success = await backup_service.send_backup_to_telegram()
+                if success:
+                    st.last_backup_date = today_str
+                    self._last_backup_date = today_str
+                    await session.commit()
+                    logger.info(f"Automated daily backup for {today_str} completed and saved to DB.")
+        except Exception as e:
+            logger.error(f"Error in _check_daily_backup: {e}", exc_info=True)
 
     async def _check_and_publish_due_posts(self):
         if not bot_manager.bot_app or not settings.TELEGRAM_CHANNEL_ID:

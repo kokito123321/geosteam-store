@@ -103,6 +103,8 @@ class StoreSettingsSchema(BaseModel):
     smtp_from_email: Optional[str] = ""
     security_shield_enabled: Optional[bool] = True
     security_audit_logs: Optional[str] = "[]"
+    auto_backup_enabled: Optional[bool] = True
+    last_backup_date: Optional[str] = ""
 
     class Config:
         from_attributes = True
