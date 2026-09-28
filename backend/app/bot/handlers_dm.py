@@ -132,13 +132,20 @@ async def handle_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         res = await session.execute(select(StoreSettings).limit(1))
         st_settings = res.scalars().first()
 
+    admin_flag = is_user_admin(user.id, st_settings)
+    webapp_url = getattr(st_settings, 'webapp_url', None) or settings.WEBAPP_URL
+
     welcome_text = (
         f"გაუმარჯოს, {user.first_name}! 💨\n\n"
         f"GeoSteam-ში ხარ! 🇬🇪💨\n"
         f"ჩვენთან დაგხვდება უმაღლესი ხარისხის პრემიუმ ვეიპ სითხეები და მოწყობილობები.\n\n"
-        f"მომწერე რა გაინტერესებს — სითხეები, არომატები, ნიკოტინის დონე თუ მიწოდება, და სიამოვნებით დაგეხმარები!"
+        f"მომწერე რა გაინტერესებს — სითხეები, არომატები, ნიკოტინის დონე თუ მიწოდება, ან აირჩიე ქვედა მენიუდან **📦 კატალოგი**!"
     )
-    await update.message.reply_text(welcome_text, reply_markup=ReplyKeyboardRemove(), parse_mode="Markdown")
+    await update.message.reply_text(
+        welcome_text,
+        reply_markup=get_main_keyboard(is_admin=admin_flag, webapp_url=webapp_url),
+        parse_mode="Markdown"
+    )
 
 async def handle_show_catalog(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Displays catalog of available products."""
@@ -149,28 +156,42 @@ async def handle_show_catalog(update: Update, context: ContextTypes.DEFAULT_TYPE
         products = res.scalars().all()
 
     if not products:
-        await update.message.reply_text(
-            "ამჟამად კატალოგში პროდუქცია არ არის. გთხოვთ შეამოწმოთ მოგვიანებით.",
-            parse_mode="Markdown"
-        )
+        msg = "ამჟამად კატალოგში პროდუქცია არ არის. გთხოვთ შეამოწმოთ მოგვიანებით."
+        if update.callback_query:
+            await update.callback_query.message.reply_text(msg, parse_mode="Markdown")
+        else:
+            await update.message.reply_text(msg, parse_mode="Markdown")
         return
 
-    reply_text = "💨 **ჩვენი ხელმისაწვდომი ვეიპ სითხეები:**\n\n"
-    for p in products:
-        stock_badge = f"✅ მარაგშია ({p.stock_quantity})" if p.stock_quantity > 0 else "❌ ამოწურულია"
-        reply_text += (
-            f"🔹 **{p.name}**\n"
-            f"   💰 ფასი: **{p.price:.2f} GEL** | მოცულობა: {p.volume_ml}ml\n"
-            f"   🧪 ნიკოტინი: {p.nicotine_mg} | VG/PG: {p.vg_pg_ratio}\n"
-            f"   📊 {stock_badge}\n"
-        )
-        if p.channel_post_url:
-            reply_text += f"   📢 [პოსტი ჩანელში]({p.channel_post_url})\n"
+    prods_30ml = [p for p in products if (p.volume_ml or 30) <= 30]
+    prods_60ml = [p for p in products if (p.volume_ml or 0) > 30]
+
+    reply_text = f"💨 **GeoSteam-ის ხელმისაწვდომი ვეიპ სითხეები (სულ {len(products)} ცალი):**\n\n"
+
+    if prods_30ml:
+        reply_text += "🔹 **30ml Pod სითხეები (ფასი: 33₾) — 50/50 | 20mg მარილოვანი:**\n"
+        for p in prods_30ml:
+            stock_badge = f"✅ მარაგშია ({p.stock_quantity})" if p.stock_quantity > 0 else "❌ ამოწურულია"
+            desc = f" — {p.description}" if p.description else ""
+            link = f" [📢 პოსტი]({p.channel_post_url})" if p.channel_post_url else ""
+            reply_text += f"• **{p.name}** (33 GEL){desc}{link} | {stock_badge}\n"
         reply_text += "\n"
 
-    reply_text += "აირჩიეთ პროდუქტი დეტალების სანახავად და შესაკვეთად 👇"
+    if prods_60ml:
+        reply_text += "🔹 **60ml სითხეები (ფასი: 50₾) — 70/30 Freebase:**\n"
+        for p in prods_60ml:
+            stock_badge = f"✅ მარაგშია ({p.stock_quantity})" if p.stock_quantity > 0 else "❌ ამოწურულია"
+            desc = f" — {p.description}" if p.description else ""
+            link = f" [📢 პოსტი]({p.channel_post_url})" if p.channel_post_url else ""
+            reply_text += f"• **{p.name}** (50 GEL){desc}{link} | {stock_badge}\n"
+        reply_text += "\n"
+
+    reply_text += "აირჩიეთ სასურველი სითხე დეტალების, ფოტოს სანახავად და შესაკვეთად 👇"
     kb = get_catalog_selection_keyboard(products)
-    await update.message.reply_text(reply_text, reply_markup=kb, parse_mode="Markdown")
+    if update.callback_query:
+        await update.callback_query.message.reply_text(reply_text, reply_markup=kb, parse_mode="Markdown")
+    else:
+        await update.message.reply_text(reply_text, reply_markup=kb, parse_mode="Markdown")
 
 async def handle_store_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Displays store location and information."""
@@ -524,8 +545,22 @@ async def handle_text_or_multimedia(update: Update, context: ContextTypes.DEFAUL
             await handle_admin_command(update, context)
             return
 
-        # Handle persistent menu button texts
-        if text == "📦 კატალოგი":
+        # Check for catalog intent keywords / questions
+        is_catalog_request = (
+            text == "📦 კატალოგი" or
+            clean_t in (
+                "კატალოგი", "კატალოგის ნახვა", "მაჩვენე კატალოგი", "კატალოგი მაჩვენე",
+                "რა სითხეები გაქვთ", "რა სითხეები გაქვთ?", "რა სითხეები გაქ", "რა სითხეები გაქ?",
+                "სითხეები მაჩვენე", "მაჩვენე სითხეები", "მენიუ", "რა გაქვთ", "რა გაქვთ?",
+                "პროდუქცია", "სურათებით რა სითხეები გაქვთ", "რა სითხეებია", "სითხეების სია",
+                "სითხეები", "სითხე", "არომატები", "არომატების სია"
+            ) or
+            ("კატალოგ" in clean_t and any(w in clean_t for w in ("მაჩვენე", "ნახვა", "მინდა", "გაქვთ", "სად", "ჩამონათვალი", "გამოაგზავნე", "გამოგზავნე"))) or
+            ("სითხ" in clean_t and any(w in clean_t for w in ("რა გაქვთ", "რა გაქ", "მაჩვენე", "ჩამონათვალი", "სია", "სურათებით", "ფოტოებით", "რომელი", "გაქვთ")))
+        )
+
+        # Handle persistent menu button texts and natural queries
+        if is_catalog_request:
             customer.bot_paused = False
             await session.commit()
             await handle_show_catalog(update, context)
@@ -871,7 +906,8 @@ async def handle_text_or_multimedia(update: Update, context: ContextTypes.DEFAUL
                 "telegram_id": user.id,
                 "name": cust_name,
                 "phone": customer.phone_number or ""
-            }
+            },
+            products=products
         )
 
         # Save AI reply

@@ -128,8 +128,10 @@ async def debug_ai():
     working_model = None
     
     candidate_list = [
-        "gemini-3.6-flash",
-        "gemini-3.8-flash"
+        "gemini-2.5-flash",
+        "gemini-2.0-flash",
+        "gemini-1.5-flash",
+        "gemini-1.5-pro"
     ]
 
     if gemini_service.client:

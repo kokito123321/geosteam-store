@@ -175,7 +175,7 @@ async def register_customer_order(
 class GeminiService:
     def __init__(self):
         self.api_key = settings.GEMINI_API_KEY
-        self.model_name = settings.GEMINI_MODEL or "gemini-3.6-flash"
+        self.model_name = settings.GEMINI_MODEL or "gemini-2.5-flash"
         self._client: Optional[genai.Client] = None
 
     @property
@@ -224,13 +224,14 @@ class GeminiService:
         system_instruction: str,
         history: Optional[List[Dict[str, str]]] = None,
         temperature: float = 0.5,
-        customer_context: Optional[Dict[str, Any]] = None
+        customer_context: Optional[Dict[str, Any]] = None,
+        products: Optional[List[Any]] = None
     ) -> str:
         """
         Generates a contextual response using Gemini, with tool calling support and model cascade.
         """
         if not self.client:
-            return self._smart_rule_based_fallback(user_message)
+            return self._smart_rule_based_fallback(user_message, products=products)
 
         if customer_context:
             _current_customer_context.set(customer_context)
@@ -264,9 +265,11 @@ class GeminiService:
                 )
             )
 
-            # Model cascade
-            candidate_models = [self.model_name]
-            for fallback_m in ["gemini-3.6-flash", "gemini-3.8-flash"]:
+            # Model cascade across official Gemini models
+            candidate_models = []
+            if self.model_name and self.model_name in ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash-lite"]:
+                candidate_models.append(self.model_name)
+            for fallback_m in ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash-lite"]:
                 if fallback_m not in candidate_models:
                     candidate_models.append(fallback_m)
 
@@ -332,14 +335,14 @@ class GeminiService:
 
             if response and response.text:
                 return response.text.strip()
-            return self._smart_rule_based_fallback(user_message)
+            return self._smart_rule_based_fallback(user_message, products=products)
 
         except Exception as e:
             logger.error(f"Gemini API generation error: {e}", exc_info=True)
-            return self._smart_rule_based_fallback(user_message)
+            return self._smart_rule_based_fallback(user_message, products=products)
 
-    def _smart_rule_based_fallback(self, user_message: str) -> str:
-        """Friendly, natural fallback for customer chat with accurate store info."""
+    def _smart_rule_based_fallback(self, user_message: str, products: Optional[List[Any]] = None) -> str:
+        """Friendly, natural fallback for customer chat with accurate store info and full product catalog."""
         msg = (user_message or "").lower().strip()
         if any(w in msg for w in ("გამარჯობა", "სალამი", "მოგესალმებით", "hello", "hi", "hey", "ზდაროვა", "გაუმარჯოს")):
             return (
@@ -360,10 +363,40 @@ class GeminiService:
                 "• მიმღები: ლ.ჩ\n\n"
                 "გადარიცხვის შემდეგ გამოგვიგზავნეთ ქვითრის სქრინშოტი აქ! 🧾"
             )
-        if any(w in msg for w in ("სითხ", "ყიდვა", "შეძენა", "ფას", "კატალოგ", "არომატ", "liquid", "juice", "elfliq", "chaser")):
+        if any(w in msg for w in ("სითხ", "ყიდვა", "შეძენა", "ფას", "კატალოგ", "არომატ", "liquid", "juice", "elfliq", "chaser", "რა გაქვთ", "რა გაქ", "მენიუ", "რა ღირს", "ცივი", "ტკბილი", "ხილის", "სურათ", "ფოტო")):
+            if products:
+                active_prods = [p for p in products if getattr(p, "is_active", True) and (getattr(p, "stock_quantity", 1) is None or getattr(p, "stock_quantity", 1) > 0)]
+                prods_30ml = [p for p in active_prods if (getattr(p, "volume_ml", 30) or 30) <= 30]
+                prods_60ml = [p for p in active_prods if (getattr(p, "volume_ml", 0) or 0) > 30]
+
+                res_lines = [
+                    f"💨 **GeoSteam-ის ხელმისაწვდომი სითხეების კატალოგი (სულ {len(active_prods)} აქტიური სითხე):**\n"
+                ]
+                if prods_30ml:
+                    res_lines.append(f"🔹 **30ml Pod სითხეები (ფასი: 33₾) — 50/50 VG/PG | 20mg მარილოვანი ნიკოტინი:**")
+                    for idx, p in enumerate(prods_30ml, 1):
+                        desc = f" — {p.description}" if getattr(p, "description", None) else ""
+                        link = f" [📢 პოსტი ჩანელში]({p.channel_post_url})" if getattr(p, "channel_post_url", None) else ""
+                        res_lines.append(f"{idx}. **{p.name}** ({p.volume_ml}ml | {p.nicotine_mg} | 33 GEL){desc}{link}")
+                    res_lines.append("")
+
+                if prods_60ml:
+                    res_lines.append(f"🔹 **60ml სითხეები (ფასი: 50₾) — 70/30 VG/PG | Freebase:**")
+                    for idx, p in enumerate(prods_60ml, len(prods_30ml) + 1):
+                        desc = f" — {p.description}" if getattr(p, "description", None) else ""
+                        link = f" [📢 პოსტი ჩანელში]({p.channel_post_url})" if getattr(p, "channel_post_url", None) else ""
+                        nic = f" | {p.nicotine_mg}" if getattr(p, "nicotine_mg", None) else ""
+                        res_lines.append(f"{idx}. **{p.name}** ({p.volume_ml}ml{nic} | 50 GEL){desc}{link}")
+                    res_lines.append("")
+
+                res_lines.append("🛒 **შესაკვეთად ან დეტალებისთვის:**\nდააჭირეთ ქვედა მენიუს ღილაკს **📦 კატალოგი** ან მომწერეთ რომელი სითხის შეკვეთა გსურთ! 💨")
+                return "\n".join(res_lines)
+
             return (
-                "💨 გვაქვს პრემიუმ ვეიპ სითხეების ფართო არჩევანი (50/50 და 70/30)!\n"
-                "მოგვწერე რა არომატი (ცივი, ხილის, ტკბილი) ან ნიკოტინის დონე გინდა და მაშინვე შეგირჩევთ."
+                "💨 **გვაქვს 11-ვე პრემიუმ ვეიპ სითხე:**\n"
+                "• 30ml Pod სითხეები (50/50 | 20mg) — 33₾\n"
+                "• 60ml სითხეები (70/30) — 50₾\n\n"
+                "სრული სიის და ფოტოების სანახავად დააჭირეთ ქვედა მენიუში **📦 კატალოგი** ღილაკს! 💨"
             )
         if any(w in msg for w in ("მიწოდება", "კურიერ", "yandex", "ტარიფ", "რეგიონ")):
             return (
@@ -614,8 +647,10 @@ class GeminiService:
                 response_mime_type="application/json"
             )
 
-            candidate_models = [self.model_name]
-            for fallback_m in ["gemini-3.6-flash", "gemini-3.8-flash"]:
+            candidate_models = []
+            if self.model_name and self.model_name in ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash-lite"]:
+                candidate_models.append(self.model_name)
+            for fallback_m in ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash-lite"]:
                 if fallback_m not in candidate_models:
                     candidate_models.append(fallback_m)
 
