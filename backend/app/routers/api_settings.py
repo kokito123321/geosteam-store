@@ -251,3 +251,17 @@ async def download_backup_file(
         filename=backup_file.name,
         media_type="application/json"
     )
+
+@router.post("/backup/restore")
+async def restore_database_backup(
+    payload: dict,
+    current_user: AdminUser = Depends(get_current_user)
+):
+    """Restores database from provided JSON snapshot."""
+    from backend.app.services.backup_service import backup_service
+    result = await backup_service.restore_from_snapshot(payload)
+    return {
+        "status": "success",
+        "message": f"მონაცემები წარმატებით აღდგა! (პროდუქტები: {result.get('products', 0)})",
+        "restored": result
+    }

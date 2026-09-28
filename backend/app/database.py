@@ -68,7 +68,7 @@ async def init_db():
         except Exception:
             pass
         try:
-            await conn.execute(text("ALTER TABLE store_settings ADD COLUMN gemini_model VARCHAR(100) DEFAULT 'gemini-3.8-flash'"))
+            await conn.execute(text("ALTER TABLE store_settings ADD COLUMN gemini_model VARCHAR(100) DEFAULT 'gemini-2.5-flash'"))
         except Exception:
             pass
         try:

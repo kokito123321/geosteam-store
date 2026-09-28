@@ -1,3 +1,6 @@
+import json
+import logging
+from pathlib import Path
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -8,7 +11,39 @@ from backend.app.schemas import ProductCreate, ProductUpdate, ProductResponse, B
 from backend.app.services.auth_service import get_current_user
 from backend.app.services.notifications import ws_manager
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/api/products", tags=["products"])
+
+async def auto_sync_seed_products(db: AsyncSession):
+    """Automatically persists current product catalog into seed_products.json for safe restart recovery."""
+    try:
+        res = await db.execute(select(Product).order_by(Product.id.asc()))
+        products = res.scalars().all()
+        seed_file = Path(__file__).resolve().parent.parent / "seed_products.json"
+        data = [
+            {
+                "id": p.id,
+                "name": p.name,
+                "description": p.description or "",
+                "price": float(p.price or 0.0),
+                "volume_ml": p.volume_ml or 30,
+                "color_type": p.color_type or "",
+                "stock_quantity": int(p.stock_quantity or 0),
+                "is_active": int(1 if p.is_active else 0),
+                "photo_url": p.photo_url or "",
+                "channel_post_url": p.channel_post_url or "",
+                "vg_pg_ratio": p.vg_pg_ratio or "50/50",
+                "nicotine_mg": p.nicotine_mg or "20mg",
+                "created_at": p.created_at.strftime("%Y-%m-%d %H:%M:%S.%f") if p.created_at else "",
+                "updated_at": p.updated_at.strftime("%Y-%m-%d %H:%M:%S.%f") if p.updated_at else ""
+            }
+            for p in products
+        ]
+        with open(seed_file, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        logger.warning(f"Could not auto-sync seed_products.json: {e}")
 
 @router.get("", response_model=List[ProductResponse])
 async def list_products(
@@ -31,6 +66,8 @@ async def create_product(
     db.add(new_product)
     await db.commit()
     await db.refresh(new_product)
+
+    await auto_sync_seed_products(db)
 
     await ws_manager.broadcast({
         "type": "product_updated",
@@ -66,6 +103,8 @@ async def update_product(
     await db.commit()
     await db.refresh(product)
 
+    await auto_sync_seed_products(db)
+
     await ws_manager.broadcast({
         "type": "product_updated",
         "action": "update",
@@ -86,6 +125,8 @@ async def delete_product(
 
     await db.delete(product)
     await db.commit()
+
+    await auto_sync_seed_products(db)
 
     await ws_manager.broadcast({
         "type": "product_updated",
@@ -108,6 +149,9 @@ async def toggle_stock(
     product.is_active = not product.is_active
     await db.commit()
     await db.refresh(product)
+
+    await auto_sync_seed_products(db)
+
     return {"status": "success", "is_active": product.is_active}
 
 @router.post("/bulk-delete")
@@ -124,6 +168,8 @@ async def bulk_delete_products(
     )
     await db.commit()
     deleted_count = res.rowcount
+
+    await auto_sync_seed_products(db)
 
     await ws_manager.broadcast({
         "type": "products_bulk_deleted",

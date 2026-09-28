@@ -173,9 +173,57 @@ class DatabaseBackupService:
         with open(file_path, "w", encoding="utf-8") as f:
             json.dump(snapshot, f, ensure_ascii=False, indent=2)
 
-        # Cleanup old backups (keep latest 30)
-        cls._cleanup_old_backups(keep=30)
-        return file_path
+    @classmethod
+    async def restore_from_snapshot(cls, snapshot: Dict[str, Any]) -> Dict[str, Any]:
+        """Restores database contents from a JSON snapshot."""
+        restored = {"products": 0, "settings": False, "customers": 0, "orders": 0}
+        async with async_session_maker() as session:
+            # 1. Restore Settings
+            st_data = snapshot.get("store_settings")
+            if st_data:
+                res_s = await session.execute(select(StoreSettings).limit(1))
+                st = res_s.scalars().first()
+                if not st:
+                    st = StoreSettings()
+                    session.add(st)
+                for k, v in st_data.items():
+                    if hasattr(st, k):
+                        setattr(st, k, v)
+                restored["settings"] = True
+
+            # 2. Restore Products
+            prods_data = snapshot.get("products", [])
+            if prods_data:
+                for p_dict in prods_data:
+                    p_name = p_dict.get("name")
+                    if not p_name:
+                        continue
+                    res_p = await session.execute(select(Product).where(Product.name == p_name))
+                    p = res_p.scalars().first()
+                    if not p:
+                        p = Product(name=p_name)
+                        session.add(p)
+                    p.description = p_dict.get("description", p.description or "")
+                    p.price = float(p_dict.get("price", p.price or 0.0))
+                    p.volume_ml = int(p_dict.get("volume_ml", p.volume_ml or 30))
+                    p.color_type = p_dict.get("color_type", p.color_type or "")
+                    p.stock_quantity = int(p_dict.get("stock_quantity", p.stock_quantity or 0))
+                    p.is_active = bool(p_dict.get("is_active", True))
+                    p.photo_url = p_dict.get("photo_url", p.photo_url or "")
+                    p.channel_post_url = p_dict.get("channel_post_url", p.channel_post_url or "")
+                    p.vg_pg_ratio = p_dict.get("vg_pg_ratio", p.vg_pg_ratio or "50/50")
+                    p.nicotine_mg = p_dict.get("nicotine_mg", p.nicotine_mg or "20mg")
+                    restored["products"] += 1
+
+            await session.commit()
+            
+            try:
+                from backend.app.routers.api_products import auto_sync_seed_products
+                await auto_sync_seed_products(session)
+            except Exception as ex:
+                logger.debug(f"Could not sync seed after restore: {ex}")
+
+        return restored
 
     @classmethod
     def _cleanup_old_backups(cls, keep: int = 30):
