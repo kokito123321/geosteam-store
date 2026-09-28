@@ -63,10 +63,17 @@ class TelegramBotManager:
         try:
             logger.info("Starting Telegram Bot polling...")
             await self.bot_app.initialize()
+            try:
+                await self.bot_app.bot.delete_webhook(drop_pending_updates=True)
+            except Exception as w_err:
+                logger.debug(f"Webhook reset check: {w_err}")
+
             await self.bot_app.start()
             await self.bot_app.updater.start_polling(
                 drop_pending_updates=True,
-                allowed_updates=Update.ALL_TYPES
+                allowed_updates=Update.ALL_TYPES,
+                bootstrap_retries=5,
+                poll_interval=1.0
             )
             self._is_running = True
             logger.info("Telegram Bot is running and polling for updates!")
