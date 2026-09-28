@@ -42,7 +42,7 @@ class DatabaseBackupService:
                     "bank_name": st.bank_name,
                     "bank_iban": st.bank_iban,
                     "bank_recipient": st.bank_recipient,
-                    "gemini_model": getattr(st, "gemini_model", "gemini-3.6-flash"),
+                    "gemini_model": getattr(st, "gemini_model", "gemini-2.5-flash"),
                     "admin_telegram_ids": st.admin_telegram_ids,
                     "admin_email": st.admin_email
                 }
