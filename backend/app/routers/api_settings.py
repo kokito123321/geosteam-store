@@ -44,6 +44,29 @@ async def get_settings(db: AsyncSession = Depends(get_db)):
         db.add(s)
         await db.commit()
         await db.refresh(s)
+
+    # Ensure SMTP settings are permanently retained across all restarts
+    updated = False
+    if not s.smtp_host and settings.SMTP_HOST:
+        s.smtp_host = settings.SMTP_HOST
+        updated = True
+    if not s.smtp_user and settings.SMTP_USER:
+        s.smtp_user = settings.SMTP_USER
+        updated = True
+    if not s.smtp_password and settings.SMTP_PASSWORD:
+        s.smtp_password = settings.SMTP_PASSWORD
+        updated = True
+    if not s.admin_email and settings.ADMIN_EMAIL:
+        s.admin_email = settings.ADMIN_EMAIL
+        updated = True
+    if not s.smtp_port and settings.SMTP_PORT:
+        s.smtp_port = settings.SMTP_PORT
+        updated = True
+
+    if updated:
+        await db.commit()
+        await db.refresh(s)
+
     return s
 
 @router.put("", response_model=StoreSettingsSchema)

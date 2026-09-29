@@ -32,12 +32,12 @@ class Settings(BaseSettings):
     DATABASE_URL: str = f"sqlite+aiosqlite:///{BASE_DIR / 'store.db'}"
     
     # Email / SMTP & HTTP API
-    SMTP_HOST: str = ""
-    SMTP_PORT: int = 587
-    SMTP_USER: str = ""
-    SMTP_PASSWORD: str = ""
-    SMTP_FROM_EMAIL: str = ""
-    ADMIN_EMAIL: str = ""
+    SMTP_HOST: str = "smtp.gmail.com"
+    SMTP_PORT: int = 465
+    SMTP_USER: str = "lchibarashvili@gmail.com"
+    SMTP_PASSWORD: str = "ppsx pujc bvgl ubyb"
+    SMTP_FROM_EMAIL: str = "lchibarashvili@gmail.com"
+    ADMIN_EMAIL: str = "lchibarashvili@gmail.com"
     RESEND_API_KEY: str = ""
     
     # Defaults for store

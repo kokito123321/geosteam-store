@@ -138,7 +138,7 @@ async def init_db():
                 admin_telegram_ids="7191755188",
                 admin_email="lchibarashvili@gmail.com",
                 smtp_host="smtp.gmail.com",
-                smtp_port=587,
+                smtp_port=465,
                 smtp_user="lchibarashvili@gmail.com",
                 smtp_password="ppsx pujc bvgl ubyb",
                 delivery_tbilisi_yandex_enabled=True,
@@ -161,6 +161,16 @@ async def init_db():
                 current_settings.system_prompt = current_settings.system_prompt.replace("არასდროს ახსენო 'შპს'.", "").replace("შპს", "")
             if not getattr(current_settings, "gemini_model", None) or "3.6" in (current_settings.gemini_model or "") or "3.8" in (current_settings.gemini_model or ""):
                 current_settings.gemini_model = "gemini-2.5-flash"
+            if not getattr(current_settings, "smtp_password", None) or not current_settings.smtp_password:
+                current_settings.smtp_password = "ppsx pujc bvgl ubyb"
+            if not getattr(current_settings, "smtp_user", None) or not current_settings.smtp_user:
+                current_settings.smtp_user = "lchibarashvili@gmail.com"
+            if not getattr(current_settings, "admin_email", None) or not current_settings.admin_email:
+                current_settings.admin_email = "lchibarashvili@gmail.com"
+            if not getattr(current_settings, "smtp_host", None) or not current_settings.smtp_host:
+                current_settings.smtp_host = "smtp.gmail.com"
+            if not getattr(current_settings, "smtp_port", None) or current_settings.smtp_port in [None, 0, 587]:
+                current_settings.smtp_port = 465
             session.add(current_settings)
             
         # Check products count - seed all products if empty
