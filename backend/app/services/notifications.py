@@ -38,8 +38,11 @@ async def send_email_alert(
     body: str,
     store_settings: Optional[StoreSettings] = None,
     html_body: Optional[str] = None
-) -> bool:
-    """Sends email alert via Resend HTTPS API (if configured) or SMTP with auto port fallback (465 SSL / 587 TLS)."""
+) -> tuple[bool, str]:
+    """
+    Sends email alert via Resend HTTPS API (if configured) or SMTP with auto port fallback.
+    Returns (success: bool, message: str).
+    """
     if not store_settings:
         from backend.app.database import async_session_maker
         from sqlalchemy import select
@@ -47,7 +50,7 @@ async def send_email_alert(
             res = await session.execute(select(StoreSettings).limit(1))
             store_settings = res.scalars().first()
 
-    to_email = (store_settings.admin_email if store_settings else "") or settings.ADMIN_EMAIL
+    to_email = ((store_settings.admin_email if store_settings else "") or settings.ADMIN_EMAIL or "").strip()
 
     # 1. Try Resend HTTPS API if key is present (Bypasses all cloud port firewalls)
     resend_key = getattr(settings, "RESEND_API_KEY", "") or os.environ.get("RESEND_API_KEY", "")
@@ -72,21 +75,23 @@ async def send_email_alert(
                 )
                 if resp.status_code in (200, 201):
                     logger.info(f"✅ Email sent via Resend API to {to_email}")
-                    return True
+                    return True, f"იმეილი წარმატებით გაიგზავნა Resend API-ით ({to_email})"
                 else:
                     logger.warning(f"Resend API error ({resp.status_code}): {resp.text}")
         except Exception as e:
             logger.warning(f"Resend HTTP request failed: {e}")
 
-    host = (store_settings.smtp_host if store_settings else "") or settings.SMTP_HOST
+    host = ((store_settings.smtp_host if store_settings else "") or settings.SMTP_HOST or "").strip()
     config_port = int((store_settings.smtp_port if store_settings else None) or settings.SMTP_PORT or 465)
-    user = (store_settings.smtp_user if store_settings else "") or settings.SMTP_USER
-    password = (store_settings.smtp_password if store_settings else "") or settings.SMTP_PASSWORD
-    from_email = (store_settings.smtp_from_email if store_settings else "") or settings.SMTP_FROM_EMAIL or user
+    user = ((store_settings.smtp_user if store_settings else "") or settings.SMTP_USER or "").strip()
+    raw_password = (store_settings.smtp_password if store_settings else "") or settings.SMTP_PASSWORD or ""
+    password = raw_password.replace(" ", "").strip()
+    from_email = ((store_settings.smtp_from_email if store_settings else "") or settings.SMTP_FROM_EMAIL or user).strip()
 
     if not host or not to_email:
-        logger.info(f"SMTP not fully configured (Host: '{host}', To: '{to_email}'). Skipping email alert.")
-        return False
+        msg = f"SMTP პარამეტრები ან ადმინის ელ-ფოსტა არ არის შევსებული (Host: '{host}', To: '{to_email}')."
+        logger.info(msg)
+        return False, msg
 
     msg = EmailMessage()
     msg["From"] = from_email or user or "noreply@geosteam.ge"
@@ -97,11 +102,10 @@ async def send_email_alert(
     if html_body:
         msg.add_alternative(html_body, subtype="html")
 
-    # Cloud hosting providers (e.g. Render, AWS, GCP) often block plaintext port 587.
-    # Port 465 (SMTPS direct SSL) is direct and standard.
-    # We attempt both 465 SSL and 587 TLS for maximum reliability.
-    port_attempts = [(465, True, False), (587, False, True)]
+    # Cloud hosting providers often block port 587; port 465 SSL is direct and reliable.
     if config_port == 587:
+        port_attempts = [(587, False, True), (465, True, False)]
+    else:
         port_attempts = [(465, True, False), (587, False, True)]
 
     last_err = None
@@ -119,13 +123,27 @@ async def send_email_alert(
                 timeout=12
             )
             logger.info(f"✅ Email alert sent successfully to {to_email} via {host}:{port}")
-            return True
+            return True, f"სატესტო იმეილი წარმატებით გაიგზავნა მისამართზე: {to_email} (Port: {port})"
         except Exception as e:
             last_err = e
             logger.warning(f"SMTP attempt via {host}:{port} failed: {e}")
 
-    logger.error(f"❌ Failed to send email alert to {to_email} via all SMTP ports: {last_err}")
-    return False
+    err_str = str(last_err)
+    user_friendly_error = err_str
+    if "535" in err_str or "Username and Password not accepted" in err_str or "BadCredentials" in err_str:
+        user_friendly_error = (
+            "Gmail ავტორიზაციის შეცდომა (535): Google მოითხოვს 16-ნიშნა App Password-ს (აპლიკაციის პაროლს) "
+            "და არა თქვენი Gmail-ის ჩვეულებრივ პაროლს. "
+            "შედით myaccount.google.com/apppasswords-ზე, შექმენით პაროლი და ჩასვით პაროლის ველში."
+        )
+    elif "Connection refused" in err_str or "timed out" in err_str.lower() or "TimeoutError" in err_str:
+        user_friendly_error = (
+            f"კავშირის შეცდომა სერვერთან ({host}:{config_port}). "
+            "სცადეთ Port 465 (SSL) მითითება ან გადაამოწმეთ SMTP Host."
+        )
+
+    logger.error(f"❌ Failed to send email alert to {to_email}: {last_err}")
+    return False, user_friendly_error
 
 async def notify_new_order(order: Order, store_settings: Optional[StoreSettings] = None, bot_app=None):
     """

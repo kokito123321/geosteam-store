@@ -208,16 +208,16 @@ async def test_email_connection(
     </div>
     """
 
-    ok = await send_email_alert(subject=subject, body=body, store_settings=s, html_body=html_body)
+    ok, detail_msg = await send_email_alert(subject=subject, body=body, store_settings=s, html_body=html_body)
     if ok:
         return {
             "status": "success",
-            "message": f"სატესტო იმეილი წარმატებით გაიგზავნა მისამართზე: {to_email}"
+            "message": detail_msg
         }
     else:
         return {
             "status": "error",
-            "message": f"იმეილის გაგზავნა ვერ მოხერხდა. გადაამოწმეთ SMTP Host ({host}), Port, მომხმარებელი და პაროლი."
+            "message": detail_msg
         }
 
 @router.post("/backup/create")
