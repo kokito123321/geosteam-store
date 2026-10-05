@@ -1,10 +1,11 @@
 import os
 import json
 import logging
+import asyncio
+import smtplib
 import httpx
 from typing import List, Dict, Any, Optional
 from email.message import EmailMessage
-import aiosmtplib
 from fastapi import WebSocket
 from backend.app.config import settings
 from backend.app.models import Order, StoreSettings
@@ -32,6 +33,63 @@ class ConnectionManager:
                 self.disconnect(connection)
 
 ws_manager = ConnectionManager()
+
+def _sync_send_smtp(
+    host: str,
+    config_port: int,
+    user: str,
+    password: str,
+    msg: EmailMessage,
+    to_email: str
+) -> tuple[bool, str]:
+    """
+    Synchronous SMTP send using standard Python smtplib with automatic port fallback (465 SSL / 587 TLS).
+    Runs inside asyncio.to_thread to avoid IPv6/DNS blocking issues on Linux cloud environments.
+    """
+    clean_pwd = password.replace(" ", "").strip()
+    port_sequence = [465, 587] if config_port != 587 else [587, 465]
+
+    last_exc = None
+    for port in port_sequence:
+        try:
+            logger.info(f"Attempting sync SMTP send to {to_email} via {host}:{port}...")
+            if port == 465:
+                with smtplib.SMTP_SSL(host, 465, timeout=12) as server:
+                    if user and clean_pwd:
+                        server.login(user, clean_pwd)
+                    server.send_message(msg)
+                logger.info(f"✅ Email sent successfully to {to_email} via {host}:465 (SSL)")
+                return True, f"სატესტო იმეილი წარმატებით გაიგზავნა მისამართზე: {to_email} (Port: 465 SSL)"
+            else:
+                with smtplib.SMTP(host, 587, timeout=12) as server:
+                    server.ehlo()
+                    server.starttls()
+                    server.ehlo()
+                    if user and clean_pwd:
+                        server.login(user, clean_pwd)
+                    server.send_message(msg)
+                logger.info(f"✅ Email sent successfully to {to_email} via {host}:587 (STARTTLS)")
+                return True, f"სატესტო იმეილი წარმატებით გაიგზავნა მისამართზე: {to_email} (Port: 587 STARTTLS)"
+        except Exception as e:
+            last_exc = e
+            logger.warning(f"SMTP attempt via {host}:{port} failed: {e}")
+
+    err_str = str(last_exc)
+    user_friendly_error = err_str
+    if "535" in err_str or "Username and Password not accepted" in err_str or "BadCredentials" in err_str:
+        user_friendly_error = (
+            "Gmail ავტორიზაციის შეცდომა (535): Google მოითხოვს 16-ნიშნა App Password-ს (აპლიკაციის პაროლს) "
+            "და არა თქვენი Gmail-ის ჩვეულებრივ პაროლს. "
+            "შედით myaccount.google.com/apppasswords-ზე, შექმენით პაროლი და ჩასვით პაროლის ველში."
+        )
+    elif "Connection refused" in err_str or "timed out" in err_str.lower() or "TimeoutError" in err_str:
+        user_friendly_error = (
+            f"კავშირის შეცდომა სერვერთან ({host}:{config_port}). "
+            "სცადეთ Port 465 (SSL) მითითება ან გადაამოწმეთ SMTP Host."
+        )
+
+    logger.error(f"❌ Failed to send email alert to {to_email}: {last_exc}")
+    return False, user_friendly_error
 
 async def send_email_alert(
     subject: str,
@@ -102,48 +160,16 @@ async def send_email_alert(
     if html_body:
         msg.add_alternative(html_body, subtype="html")
 
-    # Cloud hosting providers often block port 587; port 465 SSL is direct and reliable.
-    if config_port == 587:
-        port_attempts = [(587, False, True), (465, True, False)]
-    else:
-        port_attempts = [(465, True, False), (587, False, True)]
-
-    last_err = None
-    for port, is_ssl, is_tls in port_attempts:
-        try:
-            logger.info(f"Attempting SMTP send to {to_email} via {host}:{port} (SSL={is_ssl}, TLS={is_tls})...")
-            await aiosmtplib.send(
-                msg,
-                hostname=host,
-                port=port,
-                username=user if user else None,
-                password=password if password else None,
-                start_tls=is_tls,
-                use_tls=is_ssl,
-                timeout=12
-            )
-            logger.info(f"✅ Email alert sent successfully to {to_email} via {host}:{port}")
-            return True, f"სატესტო იმეილი წარმატებით გაიგზავნა მისამართზე: {to_email} (Port: {port})"
-        except Exception as e:
-            last_err = e
-            logger.warning(f"SMTP attempt via {host}:{port} failed: {e}")
-
-    err_str = str(last_err)
-    user_friendly_error = err_str
-    if "535" in err_str or "Username and Password not accepted" in err_str or "BadCredentials" in err_str:
-        user_friendly_error = (
-            "Gmail ავტორიზაციის შეცდომა (535): Google მოითხოვს 16-ნიშნა App Password-ს (აპლიკაციის პაროლს) "
-            "და არა თქვენი Gmail-ის ჩვეულებრივ პაროლს. "
-            "შედით myaccount.google.com/apppasswords-ზე, შექმენით პაროლი და ჩასვით პაროლის ველში."
-        )
-    elif "Connection refused" in err_str or "timed out" in err_str.lower() or "TimeoutError" in err_str:
-        user_friendly_error = (
-            f"კავშირის შეცდომა სერვერთან ({host}:{config_port}). "
-            "სცადეთ Port 465 (SSL) მითითება ან გადაამოწმეთ SMTP Host."
-        )
-
-    logger.error(f"❌ Failed to send email alert to {to_email}: {last_err}")
-    return False, user_friendly_error
+    # Send via robust synchronous smtplib in worker thread (resolves IPv4/TLS hangs on Linux/Render)
+    return await asyncio.to_thread(
+        _sync_send_smtp,
+        host=host,
+        config_port=config_port,
+        user=user,
+        password=password,
+        msg=msg,
+        to_email=to_email
+    )
 
 async def notify_new_order(order: Order, store_settings: Optional[StoreSettings] = None, bot_app=None):
     """
