@@ -153,20 +153,43 @@ async def send_broadcast(
     if channel_chat and not str(channel_chat).startswith("@") and not str(channel_chat).startswith("-100") and not str(channel_chat).lstrip("-").isdigit():
         channel_chat = f"@{channel_chat}"
 
-    recipients = []
+    channel_posted = False
+    if target in ("all", "channel", "channel_public"):
+        try:
+            if broadcast.photo_url:
+                local_path = None
+                if broadcast.photo_url.startswith("/static/"):
+                    local_path = Path("frontend") / broadcast.photo_url.lstrip("/")
+                elif os.path.exists(broadcast.photo_url):
+                    local_path = Path(broadcast.photo_url)
 
-    if target == "channel":
-        # Target: ONLY active subscribers of the Telegram channel (@Geosteamforeveryone)
-        # Check membership for each customer
-        for c in all_customers:
-            is_sub = await check_channel_subscription(bot, channel_chat, c.telegram_id)
-            if is_sub:
-                recipients.append(c)
-    elif target == "bot_users":
-        # Target: ONLY bot users in DB (who have chatted/interacted with the bot)
+                if local_path and local_path.exists():
+                    with open(local_path, "rb") as pf:
+                        await bot.send_photo(chat_id=channel_chat, photo=pf, caption=broadcast.message, parse_mode="Markdown")
+                else:
+                    await bot.send_photo(chat_id=channel_chat, photo=broadcast.photo_url, caption=broadcast.message, parse_mode="Markdown")
+            else:
+                await bot.send_message(chat_id=channel_chat, text=broadcast.message, parse_mode="Markdown")
+            channel_posted = True
+            logger.info(f"Broadcast successfully posted to Telegram Channel {channel_chat}")
+        except Exception as e_chan:
+            logger.warning(f"Could not post broadcast to channel {channel_chat}: {e_chan}")
+
+    if target == "channel_public":
+        return {
+            "status": "completed",
+            "target": target,
+            "channel_posted": channel_posted,
+            "total_recipients": 1,
+            "sent_successfully": 1 if channel_posted else 0,
+            "failed": 0 if channel_posted else 1,
+            "message": f"პოსტი წარმატებით გამოქვეყნდა ტელეგრამ ჩანელში ({channel_chat})!" if channel_posted else f"ჩანელში ({channel_chat}) გამოქვეყნება ვერ მოხერხდა."
+        }
+
+    recipients = []
+    if target == "bot_users":
         recipients = list(all_customers)
-    else: # "all"
-        # Target: Everyone in DB (bot users + channel subscribers in DB)
+    else: # "all" or "channel"
         recipients = list(all_customers)
 
     success_count = 0
@@ -184,14 +207,19 @@ async def send_broadcast(
             logger.warning(f"Error broadcasting DM to {c.telegram_id}: {e}")
             fail_count += 1
 
+    msg_summary = f"შეტყობინება გაეგზავნა {success_count} მომხმარებელს პირადში!"
+    if channel_posted:
+        msg_summary = f"პოსტი გამოქვეყნდა ჩანელში ({channel_chat}) და გაეგზავნა {success_count} მომხმარებელს პირადში!"
+
     return {
         "status": "completed",
         "target": target,
+        "channel_posted": channel_posted,
         "total_candidates": len(all_customers),
         "total_recipients": len(recipients),
         "sent_successfully": success_count,
         "failed": fail_count,
-        "message": f"პირადი შეტყობინება (DM) წარმატებით გაეგზავნა {success_count} მომხმარებელს!"
+        "message": msg_summary
     }
 
 # ----------------- Channel Post AI Creator & Scheduler -----------------

@@ -1,11 +1,11 @@
-from typing import List
+from typing import List, Any, Optional
 from backend.app.models import Product, StoreSettings
 
-def build_system_prompt(settings: StoreSettings, products: List[Product]) -> str:
+def build_system_prompt(settings: StoreSettings, products: List[Product], promos: List[Any] = None) -> str:
     """
     Builds the complete dynamic system prompt for Gemini AI,
     including the real-time product catalog, active delivery & payment options,
-    and behavior instructions.
+    active promo codes, and behavior instructions.
     """
     # 1. Base prompt / Persona from settings
     base_instructions = settings.system_prompt if settings.system_prompt else (
@@ -17,6 +17,17 @@ def build_system_prompt(settings: StoreSettings, products: List[Product]) -> str
         "- მიესალმე მარტივად და თბილად: 'გაუმარჯოს! 💨', 'სალამი! ✌️', 'რით დაგეხმარო?'.\n"
         "- კლიენტს დაეხმარე არომატების, ნიკოტინის დონის და მოწყობილობების შერჩევაში, უპასუხე კითხვებზე და მარტივად მიიყვანე შეკვეთამდე."
     )
+
+    # Promos section
+    promos_text = ""
+    if promos:
+        active_promos = [p for p in promos if getattr(p, 'is_active', True)]
+        if active_promos:
+            promos_text = "\n### 🎟️ მოქმედი პრომოკოდები & აქციები:\n"
+            for p in active_promos:
+                disc = f"{p.discount_percent}% ფასდაკლება" if p.discount_percent else f"{p.discount_amount}₾ ფასდაკლება"
+                promos_text += f"- პრომოკოდი: **{p.code}** ({disc})\n"
+            promos_text += "თუ კლიენტი გამოიყენებს ან ჩაწერს ამ პრომოკოდს, დაუდასტურე ფასდაკლება და გაითვალისწინე შეკვეთის გაფორმებისას!\n"
     
     # 2. Format catalog dynamically
     active_prods = [p for p in products if p.is_active and (p.stock_quantity is None or p.stock_quantity > 0)]
@@ -116,7 +127,7 @@ def build_system_prompt(settings: StoreSettings, products: List[Product]) -> str
    - თუ მომხმარებელი ითხოვს ცოცხალ ადამიანს, მენეჯერს ან ოპერატორს, უპასუხე: "გადაგამისამართებთ ჩვენს ოპერატორთან, ის მალე გიპასუხებთ პირადში."
 """
 
-    return f"{base_instructions}\n\n{catalog_text}\n{logistics_text}\n{about_us_prompt_text}\n{rules_text}"
+    return f"{base_instructions}\n\n{promos_text}\n\n{catalog_text}\n{logistics_text}\n{about_us_prompt_text}\n{rules_text}"
 
 
 GEOSTEAM_ABOUT_US_TEXT = """## 🇬🇪 GeoSteam — ქართული ორთქლი

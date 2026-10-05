@@ -1124,13 +1124,16 @@ async function sendBroadcastMessage() {
         return;
     }
 
-    const targetDesc = target === 'all'
-        ? 'ყველა მომხმარებლის პირადში (ბოტის მომხმარებლები + ჩანელის გამომწერები)'
-        : (target === 'channel' ? 'მხოლოდ ჩანელის (@Geosteamforeveryone) გამომწერების პირადში' : 'მხოლოდ ბოტის მომხმარებლების პირადში');
+    let targetDesc = '📢 ჩანელში გამოქვეყნება + ყველა მომხმარებლის პირადში (DMs)';
+    if (target === 'channel_public') {
+        targetDesc = '📢 მხოლოდ ტელეგრამ ჩანელში გამოქვეყნება (@Geosteamforeveryone)';
+    } else if (target === 'bot_users') {
+        targetDesc = '👤 მხოლოდ ბოტის მომხმარებლების პირადში (DMs)';
+    }
 
     if (!confirm(`ნამდვილად გსურთ მასობრივი შეტყობინების გაგზავნა:\n👉 ${targetDesc}?`)) return;
 
-    showToast('შეტყობინება იგზავნება პირად შეტყობინებებში...');
+    showToast('შეტყობინება მუშავდება და იგზავნება...');
     try {
         const res = await fetch(`${API_BASE}/marketing/broadcast`, {
             method: 'POST',
@@ -1143,7 +1146,7 @@ async function sendBroadcastMessage() {
         });
         const data = await res.json();
         if (res.ok) {
-            alert(`✅ პირადი შეტყობინებების გაგზავნა დასრულდა!\n\n🎯 სამიზნე: ${targetDesc}\n👥 შერჩეული ადრესატები: ${data.total_recipients || 0}\n📬 წარმატებით ჩაბარდა: ${data.sent_successfully || 0}\n❌ ვერ გაიგზავნა/დაბლოკილი: ${data.failed || 0}`);
+            alert(`✅ ${data.message || 'მასობრივი შეტყობინება წარმატებით გაიგზავნა!'}\n\n🎯 სამიზნე: ${targetDesc}\n👥 შერჩეული ადრესატები: ${data.total_recipients || 0}\n📬 წარმატებით ჩაბარდა: ${data.sent_successfully || 0}\n❌ ვერ გაიგზავნა/დაბლოკილი: ${data.failed || 0}`);
             showToast(data.message || 'მასობრივი შეტყობინება წარმატებით გაიგზავნა!', 'success');
             document.getElementById('broadcastText').value = '';
         } else {

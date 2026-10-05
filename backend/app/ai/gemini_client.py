@@ -11,7 +11,7 @@ from google.genai import types
 
 from backend.app.config import settings
 from backend.app.database import async_session_maker
-from backend.app.models import Product, Order, Customer, StoreSettings
+from backend.app.models import Product, Order, Customer, StoreSettings, PromoCode
 from backend.app.services.notifications import ws_manager
 
 logger = logging.getLogger(__name__)
@@ -88,8 +88,29 @@ async def register_customer_order(
             delivery_fee = 0.0
             formatted_delivery = "თბილისი (Yandex საკურიერო)"
 
-        total_amount = float(prod.price * qty) + delivery_fee
+        # Calculate subtotal and check for promo codes
+        subtotal = float(prod.price * qty)
+        discount_val = 0.0
+        applied_promo_code = ""
+
+        if customer_notes:
+            res_p_code = await session.execute(select(PromoCode).where(PromoCode.is_active == True))
+            for pr in res_p_code.scalars().all():
+                if pr.code.upper() in customer_notes.upper():
+                    applied_promo_code = pr.code.upper()
+                    if pr.discount_percent:
+                        discount_val = subtotal * (pr.discount_percent / 100.0)
+                    elif pr.discount_amount:
+                        discount_val = pr.discount_amount
+                    pr.times_used = (pr.times_used or 0) + 1
+                    break
+
+        total_amount = max(0.0, subtotal - discount_val) + delivery_fee
         order_number = f"ORD-{random.randint(10000, 99999)}"
+
+        order_notes = customer_notes.strip() if customer_notes else ""
+        if applied_promo_code:
+            order_notes = f"[პრომოკოდი: {applied_promo_code} (-{discount_val:.2f}₾)] {order_notes}".strip()
 
         new_order = Order(
             order_number=order_number,
@@ -109,7 +130,7 @@ async def register_customer_order(
             payment_method=payment_method,
             payment_status="pending",
             order_status="new",
-            notes=customer_notes.strip() if customer_notes else ""
+            notes=order_notes
         )
         session.add(new_order)
 

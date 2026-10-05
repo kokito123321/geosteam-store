@@ -8,7 +8,7 @@ from telegram import Update, ReplyKeyboardRemove
 from telegram.ext import ContextTypes
 from sqlalchemy import select
 from backend.app.database import async_session_maker
-from backend.app.models import Customer, Product, Order, ChatMessage, StoreSettings, BlacklistUser
+from backend.app.models import Customer, Product, Order, ChatMessage, StoreSettings, BlacklistUser, PromoCode
 from backend.app.ai.gemini_client import gemini_service
 from backend.app.ai.prompts import build_system_prompt, GEOSTEAM_ABOUT_US_TEXT
 from backend.app.services.notifications import notify_new_order, notify_human_requested, ws_manager
@@ -422,26 +422,45 @@ async def finalize_order(message_target, customer: Customer, cart: dict, st_sett
 
     items_list = cart.get("items", [])
     subtotal = float(cart.get("subtotal", 0.0))
-    total = subtotal + delivery_fee
+    discount_val = 0.0
+    applied_promo = (cart.get("promo_code") or cart.get("notes") or "").strip()
+
     order_number = f"ORD-{random.randint(10000, 99999)}"
 
-    # Create Order object
-    new_order = Order(
-        order_number=order_number,
-        customer_telegram_id=customer.telegram_id,
-        customer_name=f"{customer.first_name} {customer.last_name or ''}".strip(),
-        customer_phone=cart.get("phone", ""),
-        items_json=json.dumps(items_list),
-        total_amount=total,
-        delivery_method=formatted_dm,
-        delivery_address=cart.get("delivery_address", "თბილისი"),
-        payment_method=cart.get("payment_method", "cash"),
-        payment_status="pending",
-        order_status="new",
-        notes=cart.get("notes", "")
-    )
-
     async with async_session_maker() as session:
+        if applied_promo:
+            res_pr = await session.execute(select(PromoCode).where(PromoCode.is_active == True))
+            for pr_obj in res_pr.scalars().all():
+                if pr_obj.code.upper() in applied_promo.upper():
+                    if pr_obj.discount_percent:
+                        discount_val = subtotal * (pr_obj.discount_percent / 100.0)
+                    elif pr_obj.discount_amount:
+                        discount_val = pr_obj.discount_amount
+                    pr_obj.times_used = (pr_obj.times_used or 0) + 1
+                    break
+
+        total = max(0.0, subtotal - discount_val) + delivery_fee
+
+        order_notes = cart.get("notes", "")
+        if discount_val > 0:
+            order_notes = f"[პრომოკოდი (-{discount_val:.2f}₾)] {order_notes}".strip()
+
+        # Create Order object
+        new_order = Order(
+            order_number=order_number,
+            customer_telegram_id=customer.telegram_id,
+            customer_name=f"{customer.first_name} {customer.last_name or ''}".strip(),
+            customer_phone=cart.get("phone", ""),
+            items_json=json.dumps(items_list),
+            total_amount=total,
+            delivery_method=formatted_dm,
+            delivery_address=cart.get("delivery_address", "თბილისი"),
+            payment_method=cart.get("payment_method", "cash"),
+            payment_status="pending",
+            order_status="new",
+            notes=order_notes
+        )
+
         session.add(new_order)
         # Deduct stock
         for it in items_list:
@@ -877,11 +896,14 @@ async def handle_text_or_multimedia(update: Update, context: ContextTypes.DEFAUL
         # If bot is active: Generate response using Gemini 3.8 Flash!
         await context.bot.send_chat_action(chat_id=chat_id, action="typing")
 
-        # Fetch recent products and prompt
+        # Fetch recent products, active promos, and prompt
         res_prod = await session.execute(select(Product))
         products = res_prod.scalars().all()
 
-        system_prompt = build_system_prompt(st_settings, products)
+        res_promos = await session.execute(select(PromoCode).where(PromoCode.is_active == True))
+        active_promos = res_promos.scalars().all()
+
+        system_prompt = build_system_prompt(st_settings, products, promos=active_promos)
 
         # Fetch recent 6 messages for context
         res_hist = await session.execute(
