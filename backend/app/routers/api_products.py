@@ -42,8 +42,11 @@ async def auto_sync_seed_products(db: AsyncSession):
         ]
         with open(seed_file, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
+
+        from backend.app.services.backup_service import backup_service
+        await backup_service.create_backup_file()
     except Exception as e:
-        logger.warning(f"Could not auto-sync seed_products.json: {e}")
+        logger.warning(f"Could not auto-sync seed_products.json or backup: {e}")
 
 @router.get("", response_model=List[ProductResponse])
 async def list_products(

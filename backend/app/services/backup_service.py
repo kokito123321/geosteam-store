@@ -243,8 +243,16 @@ class DatabaseBackupService:
         """
         Creates a fresh backup and sends it directly to configured Telegram admin(s).
         """
-        if not bot_manager.bot_app:
-            logger.warning("Telegram Bot is not initialized. Cannot send backup.")
+        bot = getattr(bot_manager.bot_app, "bot", None)
+        if not bot and settings.TELEGRAM_BOT_TOKEN:
+            try:
+                from telegram import Bot
+                bot = Bot(token=settings.TELEGRAM_BOT_TOKEN)
+            except Exception as e:
+                logger.warning(f"Could not initialize standalone Bot for backup: {e}")
+
+        if not bot:
+            logger.warning("Telegram Bot is not initialized and token is missing. Cannot send backup.")
             return False
 
         try:
@@ -282,7 +290,7 @@ class DatabaseBackupService:
             for aid in admin_ids:
                 try:
                     with open(backup_file, "rb") as bf:
-                        await bot_manager.bot_app.bot.send_document(
+                        await bot.send_document(
                             chat_id=int(aid),
                             document=bf,
                             filename=backup_file.name,
