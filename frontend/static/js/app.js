@@ -321,7 +321,11 @@ async function triggerManualBackup() {
         });
         const data = await res.json();
         if (res.ok) {
-            showToast(data.message || 'Backup წარმატებით გაიგზავნა Telegram-ში!', 'success');
+            if (data.status === 'success') {
+                showToast(data.message || 'Backup წარმატებით გაიგზავნა Telegram-ში!', 'success');
+            } else {
+                showToast(data.message || 'გაფრთხილება Backup-ის შექმნისას', 'warning');
+            }
         } else {
             showToast(data.detail || 'შეცდომა Backup-ის შექმნისას', 'error');
         }
@@ -329,6 +333,139 @@ async function triggerManualBackup() {
         console.error('Error triggering backup:', err);
         showToast('სერვერთან კავშირის შეცდომა', 'error');
     }
+}
+
+async function downloadBackupJson() {
+    showToast('⏳ მზადდება სარეზერვო JSON ფაილი...', 'info');
+    try {
+        const res = await fetch(`${API_BASE}/settings/backup/download`, {
+            headers: getAuthHeaders()
+        });
+        if (!res.ok) throw new Error('სარეზერვო ფაილის გენერირება ვერ მოხერხდა');
+        const blob = await res.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.style.display = 'none';
+        a.href = url;
+        const now = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '_');
+        a.download = `geosteam_backup_${now}.json`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        showToast('✅ Backup JSON ფაილი წარმატებით ჩამოიტვირთა!', 'success');
+    } catch (err) {
+        console.error('Error downloading backup:', err);
+        showToast('❌ Backup-ის ჩამოტვირთვა ვერ მოხერხდა', 'error');
+    }
+}
+
+async function restoreBackupJson(fileInput) {
+    const file = fileInput.files[0];
+    if (!file) return;
+
+    if (!confirm(`ნამდვილად გსურთ მონაცემთა ბაზის აღდგენა ფაილიდან "${file.name}"?\n\nეს განაახლებს არსებულ პროდუქტებს, მარაგებსა და პარამეტრებს.`)) {
+        fileInput.value = '';
+        return;
+    }
+
+    showToast('⏳ მიმდინარეობს ბაზის აღდგენა...', 'info');
+    try {
+        const text = await file.text();
+        const payload = JSON.parse(text);
+
+        const res = await fetch(`${API_BASE}/settings/backup/restore`, {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: JSON.stringify(payload)
+        });
+
+        const data = await res.json();
+        if (res.ok) {
+            showToast(data.message || '✅ მონაცემები წარმატებით აღდგა!', 'success');
+            setTimeout(() => {
+                window.location.reload();
+            }, 1200);
+        } else {
+            showToast(data.detail || '❌ აღდგენის შეცდომა', 'error');
+        }
+    } catch (err) {
+        console.error('Error restoring backup:', err);
+        showToast('❌ არასწორი ან დაზიანებული JSON ფაილი', 'error');
+    } finally {
+        fileInput.value = '';
+    }
+}
+
+let currentDbEngine = 'sqlite';
+
+function updateDbBadge(dbEngine) {
+    currentDbEngine = dbEngine || 'sqlite';
+    const badge = document.getElementById('dbTypeBadge');
+    const badgeDetail = document.getElementById('dbTypeBadgeDetail');
+    
+    if (badge) {
+        if (currentDbEngine === 'postgresql') {
+            badge.innerHTML = '🐘 PostgreSQL (მუდმივი)';
+            badge.style.background = 'rgba(16, 185, 129, 0.15)';
+            badge.style.borderColor = 'rgba(16, 185, 129, 0.3)';
+            badge.style.color = '#34d399';
+            badge.title = 'მონაცემთა ბაზა მუდმივად დაცულია PostgreSQL საცავში (არ წაიშლება გადატვირთვისას)';
+        } else {
+            badge.innerHTML = '💾 SQLite (დროებითი)';
+            badge.style.background = 'rgba(245, 158, 11, 0.15)';
+            badge.style.borderColor = 'rgba(245, 158, 11, 0.3)';
+            badge.style.color = '#fbbf24';
+            badge.title = 'ყურადღება: სერვერი იყენებს ლოკალურ SQLite-ს. დააჭირეთ დეტალებისთვის.';
+        }
+    }
+    if (badgeDetail) {
+        if (currentDbEngine === 'postgresql') {
+            badgeDetail.innerHTML = '🐘 PostgreSQL მუდმივი საცავი';
+            badgeDetail.className = 'badge badge-success';
+        } else {
+            badgeDetail.innerHTML = '⚠️ SQLite დროებითი საცავი';
+            badgeDetail.className = 'badge badge-warning';
+        }
+    }
+}
+
+function showDbInfoModal() {
+    const modal = document.getElementById('dbInfoModal');
+    const content = document.getElementById('dbModalContent');
+    if (!modal || !content) return;
+
+    if (currentDbEngine === 'postgresql') {
+        content.innerHTML = `
+            <div style="background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 8px; padding: 1rem; margin-bottom: 1rem;">
+                <h4 style="color: #34d399; margin: 0 0 0.5rem;">✅ PostgreSQL მუდმივი ღრუბლოვანი ბაზა აქტიურია</h4>
+                <p style="margin: 0; color: #94a3b8;">თქვენი პროდუქტები, შეკვეთები და პარამეტრები დაცულია და ინახება PostgreSQL სერვერზე. სერვერის გადატვირთვა ან ხელახალი Deploy მონაცემებს არ შლის.</p>
+            </div>
+            <p style="color: #cbd5e1;">💾 მაინც შეგიძლიათ ნებისმიერ დროს ჩამოტვირთოთ ან Telegram-ში გააგზავნოთ სარეზერვო ასლი ზედა ღილაკით.</p>
+        `;
+    } else {
+        content.innerHTML = `
+            <div style="background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.3); border-radius: 8px; padding: 1rem; margin-bottom: 1rem;">
+                <h4 style="color: #fbbf24; margin: 0 0 0.5rem;">⚠️ აქტიურია SQLite (დროებითი საცავი)</h4>
+                <p style="margin: 0; color: #cbd5e1;">Render-ის Free სერვერზე SQLite ფაილი ინახება დროებით მეხსიერებაში. როდესაც Render-ის სერვერი უმოქმედობის გამო იძინებს ან ახალი ვერსია იტვირთება, დროებითი მეხსიერება განულდება საწყის 14 პროდუქტზე.</p>
+            </div>
+            <h4 style="margin: 1rem 0 0.5rem; color: var(--primary);">🚀 როგორ გავხადოთ მონაცემები 100% მუდმივი (Render PostgreSQL):</h4>
+            <ol style="padding-left: 1.25rem; margin: 0; color: #94a3b8; font-size: 0.88rem; line-height: 1.6;">
+                <li style="margin-bottom: 0.4rem;">შედით <strong>Render Dashboard</strong>-ზე (<a href="https://dashboard.render.com" target="_blank" style="color: #60a5fa;">dashboard.render.com</a>)</li>
+                <li style="margin-bottom: 0.4rem;">დააჭირეთ <strong>"New +"</strong> ➔ <strong>"PostgreSQL"</strong> ➔ დაარქვით <code>geosteam-db</code> და შექმენით (Free).</li>
+                <li style="margin-bottom: 0.4rem;">გახსენით თქვენი Web Service ➔ <strong>Environment</strong> ➔ დაამატეთ ცვლადი <code>DATABASE_URL</code> შექმნილი ბაზის <strong>Internal Database URL</strong>-ით.</li>
+            </ol>
+            <div style="margin-top: 1rem; padding: 0.75rem; background: rgba(59, 130, 246, 0.1); border-radius: 6px; font-size: 0.88rem; color: #93c5fd;">
+                💡 <strong>დროებითი გამოსავალი:</strong> ყოველთვის შეგიძლიათ გამოიყენოთ <strong>"📥 Backup JSON"</strong> და <strong>"📤 აღდგენა"</strong> ღილაკები პროდუქტების კატალოგში.
+            </div>
+        `;
+    }
+
+    modal.style.display = 'flex';
+}
+
+function closeDbInfoModal() {
+    const modal = document.getElementById('dbInfoModal');
+    if (modal) modal.style.display = 'none';
 }
 
 async function confirmResetMetric(metricType) {
@@ -1251,6 +1388,10 @@ async function loadStoreSettings() {
         if (document.getElementById('smtpPassword')) document.getElementById('smtpPassword').value = s.smtp_password || '';
         if (document.getElementById('autoBackupEnabled')) document.getElementById('autoBackupEnabled').checked = (s.auto_backup_enabled !== false);
 
+        if (s.db_engine) {
+            updateDbBadge(s.db_engine);
+        }
+
         loadSecurityLogs();
     } catch (e) { console.error(e); }
 }
@@ -1495,6 +1636,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Initial load
     switchTab('dashboard');
+
+    // Initialize Database badge on topbar immediately
+    fetch(`${API_BASE}/settings`, { headers: getAuthHeaders() })
+        .then(res => res.json())
+        .then(s => { if (s && s.db_engine) updateDbBadge(s.db_engine); })
+        .catch(err => console.debug('Could not prefetch DB engine:', err));
 });
 
 // ==========================================================================

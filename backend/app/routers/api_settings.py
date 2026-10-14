@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from backend.app.database import get_db
+from backend.app.database import get_db, IS_SQLITE
 from backend.app.models import StoreSettings, AdminUser
 from backend.app.schemas import StoreSettingsSchema
 from backend.app.services.auth_service import get_current_user
@@ -67,6 +67,7 @@ async def get_settings(db: AsyncSession = Depends(get_db)):
         await db.commit()
         await db.refresh(s)
 
+    setattr(s, "db_engine", "sqlite" if IS_SQLITE else "postgresql")
     return s
 
 @router.put("", response_model=StoreSettingsSchema)

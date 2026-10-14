@@ -105,6 +105,7 @@ class StoreSettingsSchema(BaseModel):
     security_audit_logs: Optional[str] = "[]"
     auto_backup_enabled: Optional[bool] = False
     last_backup_date: Optional[str] = ""
+    db_engine: Optional[str] = "sqlite"
 
     class Config:
         from_attributes = True
