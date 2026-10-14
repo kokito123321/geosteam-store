@@ -1,9 +1,10 @@
 import asyncio
 import logging
 from typing import Optional
+import telegram.error
 from telegram import Update
 from telegram.ext import (
-    Application, ApplicationBuilder, CommandHandler, CallbackQueryHandler, MessageHandler, ChatMemberHandler, filters
+    Application, ApplicationBuilder, CommandHandler, CallbackQueryHandler, MessageHandler, ChatMemberHandler, ContextTypes, filters
 )
 from backend.app.config import settings
 from backend.app.bot.handlers_dm import (
@@ -27,6 +28,14 @@ class TelegramBotManager:
             return None
 
         app = ApplicationBuilder().token(token).build()
+
+        async def _bot_error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
+            if isinstance(context.error, telegram.error.Conflict):
+                logger.warning("Telegram Bot Conflict: Redeploy handover in progress. Connection will stabilize automatically.")
+                return
+            logger.error(f"Telegram Bot error: {context.error}")
+
+        app.add_error_handler(_bot_error_handler)
 
         # Commands
         app.add_handler(CommandHandler("start", handle_start))
@@ -68,11 +77,14 @@ class TelegramBotManager:
             except Exception as w_err:
                 logger.debug(f"Webhook reset check: {w_err}")
 
+            # Grace period allowing Telegram long-polling session from prior container to clear
+            await asyncio.sleep(1.5)
+
             await self.bot_app.start()
             await self.bot_app.updater.start_polling(
                 drop_pending_updates=True,
                 allowed_updates=Update.ALL_TYPES,
-                bootstrap_retries=5,
+                bootstrap_retries=-1,
                 poll_interval=1.0
             )
             self._is_running = True
