@@ -222,5 +222,53 @@
     "nicotine_mg": "6mg",
     "created_at": "2026-09-19 04:20:35.234164",
     "updated_at": "2026-09-19 04:20:35.234175"
+  },
+  {
+    "id": 19,
+    "name": "KAY LIME BANANA CREAM PIE",
+    "description": "ცოცხალი ლაიმის მჟავიანობა, მწიფე ბანანის სიტკბო და ნაზი, კრემოვანი ნამცხვრის ტექსტურა — დესერტი, სადაც ტროპიკული სიხალისე და ხავერდოვანი სიტკბო იდეალურ ბალანსს ქმნის.",
+    "price": 50.0,
+    "volume_ml": 60,
+    "color_type": "Salt Nicotine",
+    "stock_quantity": 1,
+    "is_active": 1,
+    "photo_url": "",
+    "channel_post_url": "https://t.me/Geosteamforeveryone/76",
+    "vg_pg_ratio": "50/50",
+    "nicotine_mg": "20mg",
+    "created_at": "",
+    "updated_at": ""
+  },
+  {
+    "id": 20,
+    "name": "CHOCOLATE GLAZED DONUT & STRAWBERRY BANANA FRAISE",
+    "description": "შოკოლადის მინანქრით დაფარული დონატის მდიდარი გემო, მწიფე მარწყვის ხილისებრი სიტკბო და ბანანის ნაზი, კრემოვანი არომატი — დესერტული კომბინაცია, რომელიც ყოველ ჩასუნთქვაზე ძალიან ტკბილ სიამოვნებას გპირდება.",
+    "price": 50.0,
+    "volume_ml": 60,
+    "color_type": "Salt Nicotine",
+    "stock_quantity": 1,
+    "is_active": 1,
+    "photo_url": "",
+    "channel_post_url": "https://t.me/Geosteamforeveryone/76",
+    "vg_pg_ratio": "50/50",
+    "nicotine_mg": "20mg",
+    "created_at": "",
+    "updated_at": ""
+  },
+  {
+    "id": 21,
+    "name": "TABBACCO HONEY & LATTE COFFEE",
+    "description": "თამბაქოს მდიდარი, თბილი ნოტები, ოქროსფერი თაფლის სიტკბო და ახლად მოხალული ყავის ღრმა არომატი. დახვეწილი, სასიამოვნოდ ტკბილი კომბინაცია მათთვის, ვინც გამორჩეულ და ხასიათიან გემოს ეძებს.",
+    "price": 50.0,
+    "volume_ml": 60,
+    "color_type": "Salt Nicotine",
+    "stock_quantity": 1,
+    "is_active": 1,
+    "photo_url": "",
+    "channel_post_url": "https://t.me/Geosteamforeveryone/76",
+    "vg_pg_ratio": "50/50",
+    "nicotine_mg": "20mg",
+    "created_at": "",
+    "updated_at": ""
   }
 ]
